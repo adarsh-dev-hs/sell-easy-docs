@@ -1,0 +1,165 @@
+---
+title: Decisions
+description: An ADR-style log of the main product-architecture decisions behind SellEasy, with context, the decision and its consequences.
+icon: Scale
+---
+
+This log records the decisions that shape SellEasy's architecture and roadmap. Each entry has a **status**: *Accepted* (in force), *Proposed* (recommended, not yet confirmed) or *Superseded*. Code-level decisions (zod-driven routes, invalidate-all mutations, stateless JWT) are covered in more depth in [Engineering → Architecture](/docs/engineering/architecture#key-design-decisions).
+
+| # | Decision | Status | Date |
+|---|---|---|---|
+| ADR-01 | Modular monolith with service-shaped modules | Accepted | 2026-09 |
+| ADR-02 | Rent, don't build, data and delivery (provider adapters) | Accepted | 2026-09 |
+| ADR-03 | Human-in-the-loop approvals by default | Accepted | 2026-09 |
+| ADR-04 | JSON-file store behind a repository interface | Accepted (interim) | 2026-09-17 |
+| ADR-05 | In-browser mock data mode for demos | Accepted | 2026-09 |
+| ADR-06 | TanStack Query for server state; no business logic in the browser | Accepted | 2026-09-17 |
+| ADR-07 | Claude as the LLM, with a fast model for high-volume tasks | Accepted | 2026-09 |
+| ADR-08 | Synchronous agent now, event bus later | Accepted (interim) | 2026-09 |
+| ADR-09 | Deterministic, explainable scoring (LLM assists, never decides alone) | Accepted | 2026-09 |
+| ADR-10 | AWS as the target cloud; PostgreSQL as the system of record | Accepted | 2026-09 |
+| ADR-11 | HubSpot as the first CRM; SES as the first sender | Proposed | 2026-10 |
+| ADR-12 | Build-vs-buy for auth: managed identity provider for SSO | Proposed | 2026-10 |
+
+---
+
+## ADR-01 · Modular monolith with service-shaped modules
+
+**Context.** The plan names many logical services (Entity, Signal ingestion, Scoring, Orchestration, Outreach, CRM/Pipeline, Analytics). The team is small, and the product surface was still changing.
+
+**Decision.** Build one Express API. Each logical service is a folder under `backend/src/modules/` with its own routes, service and schemas, and every module uses the shared `Repository` interface.
+
+**Consequences.**
+- ✅ One deployable, one pipeline, simple local development, fast refactors.
+- ✅ Boundaries are visible, so extraction later is mechanical.
+- ⚠️ Modules call each other directly today; the boundaries are a convention, not enforced.
+- ➡️ Extract signal ingestion and agent workers first, when volume demands it ([Target architecture](/docs/architecture/target-architecture)).
+
+## ADR-02 · Rent, don't build, data and delivery
+
+**Context.** Intent, enrichment, email infrastructure and CRM are mature markets. Competing with them would dilute the product.
+
+**Decision.** Integrate vendors through provider interfaces (`EnrichmentProvider`, `CrmProvider`, `EmailProvider`, `LlmProvider`, `VendorConnectionTester`), selected by `*_PROVIDER` env vars, with offline mocks as the default. Customers bring their own vendor keys, stored encrypted per workspace.
+
+**Consequences.**
+- ✅ Vendor-neutral positioning; customers keep existing contracts.
+- ✅ The whole product works offline, in tests and in demo mode.
+- ⚠️ Schedule risk moves to vendor APIs, contracts and app reviews.
+- ⚠️ Interfaces need a per-org credential parameter before real adapters ([tech debt #2](/docs/engineering/tech-debt)).
+
+## ADR-03 · Human-in-the-loop approvals by default
+
+**Context.** AI-written cold outreach carries brand, deliverability and compliance risk. Buyers of GTM tools are wary of fully autonomous "AI SDRs".
+
+**Decision.** Playbooks require approval for drafted outreach by default. The agent may route, enrich, score, open deals and notify on its own. Auto-send is an explicit per-playbook opt-in.
+
+**Consequences.**
+- ✅ Trust and control; clear differentiation.
+- ✅ Approval and edit rates become a quality signal for the LLM.
+- ⚠️ Throughput depends on reps reviewing the queue; the MVP must make review fast.
+- ➡️ Guardrails (daily caps, domain allow-lists, sentiment checks) are prerequisites for broader auto-send.
+
+## ADR-04 · JSON-file store behind a repository interface
+
+**Context.** A real backend was needed quickly, with no infrastructure to install.
+
+**Decision.** Services depend only on `Repository<T>`, whose small query language maps directly to SQL. The first driver writes one JSON file per collection, atomically, with an in-memory cache. `DB_DRIVER` selects the driver.
+
+**Consequences.**
+- ✅ Zero-setup development and inspectable data.
+- ⚠️ Single process only, no transactions, whole-file rewrites. **Not suitable for production at any real scale.**
+- ➡️ PostgreSQL driver is the first epic of [Phase 1](/docs/roadmap/phase-1-foundation). JSON stays for local work and the browser mock.
+
+## ADR-05 · In-browser mock data mode for demos
+
+**Context.** Stakeholders, investors and prospects needed to click through the product before any backend was hosted. A separate hand-written mock would drift from the real rules.
+
+**Decision.** `NEXT_PUBLIC_DATA_SOURCE=mock` loads a synced copy of the backend's routes and services (`npm run mock:sync`) and runs it in the browser against localStorage, seeded with the demo workspace. `api` (the default) calls the real API.
+
+**Consequences.**
+- ✅ Public demo links on Vercel with no backend, secrets or customer data.
+- ✅ The demo behaves exactly like the product, because it is the product's code.
+- ⚠️ The copy must be re-synced after backend changes; `mock:check` in CI enforces this.
+- ⚠️ Server-only dependencies must have browser overrides or shims.
+- ➡️ Going live is a config flip plus redeploy ([checklist](/docs/architecture/environments-and-data-modes#switching-a-vercel-demo-to-live-data)).
+
+## ADR-06 · TanStack Query for server state; no business logic in the browser
+
+**Context.** The first prototype kept all data and rules in a browser store. Moving to an API risked duplicating rules in two places.
+
+**Decision.** The frontend holds no domain data or rules. TanStack Query caches server state; mutations invalidate all queries by default. Only the session is persisted.
+
+**Consequences.**
+- ✅ One source of truth for rules; the UI is always consistent after writes.
+- ⚠️ Extra refetches after each mutation; hooks can narrow invalidation later.
+- ⚠️ Frontend types are a hand-maintained copy until they are generated from OpenAPI.
+
+## ADR-07 · Claude as the LLM, with a fast model for volume
+
+**Context.** Drafting, reply suggestions, sentiment classification and account research need strong writing and reasoning with predictable latency.
+
+**Decision.** Use Anthropic Claude through the `LlmProvider` interface. Default model `claude-opus-5` (`ANTHROPIC_MODEL`) for drafting and research; `claude-haiku-4-5` (`ANTHROPIC_FAST_MODEL`) for high-volume tasks such as sentiment and short suggestions. The in-app LLM settings also list `claude-sonnet-5` as a per-workspace choice. A monthly token budget is configurable per workspace.
+
+**Consequences.**
+- ✅ High-quality drafts; one vendor relationship; model choice per task controls cost.
+- ⚠️ LLM spend is a platform cost that scales with usage; it needs metering and plan limits ([Vendor & AI cost](/docs/team-and-cost/vendor-and-ai-cost)).
+- ➡️ Build an evaluation set of real drafts before changing models or prompts.
+
+## ADR-08 · Synchronous agent now, event bus later
+
+**Context.** A synchronous loop is easy to test and demo: the response contains the run.
+
+**Decision.** Ingestion calls the agent inline when autopilot is on, while still publishing `signal.ingested` on the `EventBus` interface.
+
+**Consequences.**
+- ✅ Deterministic tests and UI.
+- ⚠️ Ingest latency includes scoring, the LLM call and every action; batches are processed serially.
+- ➡️ Move to EventBridge + SQS workers in [Phase 2](/docs/roadmap/phase-2-real-integrations), before real LLM calls hit high volume.
+
+## ADR-09 · Deterministic, explainable scoring
+
+**Context.** Reps don't act on scores they can't explain, and RevOps needs to predict the effect of changes.
+
+**Decision.** Scores are a transparent formula (fit criteria + weighted, time-decayed intent → tier) with a breakdown and a what-if preview. LLMs may add research and suggestions, but do not silently change scores.
+
+**Consequences.**
+- ✅ Trust, auditability and a fast preview.
+- ⚠️ Less adaptive than a learned model; ICP tuning is manual until feedback loops exist (Phase 4).
+
+## ADR-10 · AWS as the target cloud; PostgreSQL as the system of record
+
+**Context.** The plan needs managed Postgres, queues, email, identity and a warehouse from one provider.
+
+**Decision.** Target AWS (ECS Fargate, RDS, ElastiCache, OpenSearch, EventBridge/SQS, Step Functions, SES, Cognito, Secrets Manager, CloudWatch, Redshift). The frontend may stay on Vercel.
+
+**Consequences.**
+- ✅ One IAM model, one bill, SES and Cognito included.
+- ⚠️ More moving parts than a PaaS; needs IaC and at least fractional DevOps.
+
+## ADR-11 · HubSpot first, SES first (proposed)
+
+**Context.** Pilot customers need one CRM and one sending path. Integration effort must be focused.
+
+**Proposal.** HubSpot is the first CRM (mid-market fit, free developer accounts, OAuth app model). SES is the first sender (already on AWS; also serves invites). Instantly or Mailpool follow for cold-email volume and warm-up.
+
+**Consequences if accepted.** Salesforce-only prospects wait until Phase 4. Cold-email deliverability at volume depends on Phase 3.
+
+## ADR-12 · Managed identity provider for SSO (proposed)
+
+**Context.** Enterprise buyers require SAML/OIDC SSO, MFA and audit trails.
+
+**Proposal.** Keep local auth for self-serve, and add a managed IdP (Cognito, or Auth0 if broader enterprise federation is needed) behind `AUTH_DRIVER`. Decide in Phase 3 based on pilot customer requirements and cost per MAU.
+
+**Consequences if accepted.** Faster SSO and less security surface to own; some vendor lock-in and per-MAU cost.
+
+## Open decisions
+
+| Topic | Options | Decide by | Owner |
+|---|---|---|---|
+| Who owns a deal after two-way CRM sync | CRM wins · SellEasy wins · most recent wins | Phase 2 start | PM + lead engineer |
+| Multi-playbook execution | First match · all matches · priority with stop flag | Phase 3 start | PM |
+| Frontend hosting in production | Vercel · CloudFront + S3 | Phase 1 | Lead engineer + DevOps |
+| Warehouse | Redshift Serverless · Snowflake | Phase 4 start | Lead engineer |
+| Billing provider and pricing model | Seats · seats + usage credits | Phase 3 | Founders + PM |
+
+More open product questions: [Product → Roadmap & status](/docs/product/roadmap#open-questions).

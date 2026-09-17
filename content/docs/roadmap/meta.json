@@ -1,0 +1,7 @@
+{
+  "title": "Roadmap (6–9 months)",
+  "description": "Phased delivery plan",
+  "icon": "Milestone",
+  "root": true,
+  "pages": ["index", "phase-1-foundation", "phase-2-real-integrations", "phase-3-scale-and-intelligence", "phase-4-enterprise-and-analytics", "timeline", "dependencies-and-risks"]
+}

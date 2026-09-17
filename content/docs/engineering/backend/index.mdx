@@ -6,12 +6,14 @@ icon: Server
 
 The backend (`backend/`) is an Express 5 + TypeScript REST API. It owns every record and every business rule: authentication, validation, scoring, the orchestration agent, deduplication, enrichment, outreach, pipeline, analytics and imports. It runs as one Node process, serves its own OpenAPI document and Swagger UI, and stores data in JSON files behind a repository interface.
 
+Most of `src/` is **portable**: route definitions, services, the domain, the in-memory repository and the event bus contain no Node or Express imports. The frontend's [mock data mode](/docs/engineering/frontend/mock-mode) copies that code into the browser. Only a thin edge (`app.ts`, `server.ts`, `lib/http.ts`, `lib/openapi.ts`, `lib/logger.ts`, `lib/crypto.ts`, `middleware/*`, `config.ts` and `db/json`) is Node-specific.
+
 ## Stack
 
 | Concern | Library / tool | Version (package.json) | Where |
 |---|---|---|---|
 | Runtime | Node.js | `>=20` (`engines`) | ESM (`"type": "module"`, `NodeNext` resolution) |
-| HTTP | Express | `^5.2.1` | `src/app.ts`. Async handler errors reach the error handler without wrappers. |
+| HTTP | Express | `^5.2.1` | `src/app.ts`, `src/lib/http.ts`. Async handler errors reach the error handler without wrappers. |
 | Language | TypeScript | `^7.0.2` | `tsconfig.json` (`strict`, target ES2023) |
 | Validation | zod | `^4.6.5` | route schemas, `src/config.ts`, OpenAPI via `z.toJSONSchema` |
 | Auth | jsonwebtoken, bcryptjs | `^9.0.3`, `^3.0.3` | `src/middleware/auth.ts`, `modules/organization/service.ts` |
@@ -49,7 +51,9 @@ The backend (`backend/`) is an Express 5 + TypeScript REST API. It owns every re
       <File name="app.ts" />
       <File name="config.ts" />
       <Folder name="lib" defaultOpen>
+        <File name="route-runtime.ts" />
         <File name="http.ts" />
+        <File name="roles.ts" />
         <File name="openapi.ts" />
         <File name="errors.ts" />
         <File name="expand.ts" />
@@ -64,6 +68,9 @@ The backend (`backend/`) is an Express 5 + TypeScript REST API. It owns every re
       <Folder name="db" defaultOpen>
         <File name="repository.ts" />
         <File name="index.ts" />
+        <Folder name="memory">
+          <File name="memory-repository.ts" />
+        </Folder>
         <Folder name="json">
           <File name="json-repository.ts" />
         </Folder>
@@ -116,12 +123,15 @@ The backend (`backend/`) is an Express 5 + TypeScript REST API. It owns every re
 | `src/server.ts` | Entry point. Warns if no organization exists, starts listening on `PORT`, and handles `SIGINT`/`SIGTERM` with a 10 s forced-exit timeout. |
 | `src/app.ts` | `createApp()`: middleware, module routers, `/health`, OpenAPI and Swagger, 404 and error handlers. Tests import this without starting a server. |
 | `src/config.ts` | Parses `process.env` with zod. Exits the process on invalid config. Exports `config` with derived fields. |
-| `src/lib/http.ts` | `createModule()` / `route()`, shared query schemas, `paged()`, `HANDLED`. |
-| `src/db/` | Storage abstraction and drivers. `db` is the registry of all collections. |
+| `src/lib/route-runtime.ts` | Portable route runtime: `RouteDef`, `RouteContext`, `executeRoute()`, `errorOutput()`, `paged()`, `fileResponse()`, `routeRegistry`, shared query schemas. |
+| `src/lib/http.ts` | `createModule()` / `route()`: binds each definition to an Express router. Re-exports `route-runtime.ts`, so modules import everything from `lib/http.js`. |
+| `src/lib/roles.ts` | `AuthContext`, `atLeast()`, `assertRole()`. |
+| `src/middleware/auth.ts` | `signToken`, `authenticateBearer`, `authenticateApiKey`, `authenticateRequest`. |
+| `src/db/` | Storage abstraction and drivers. `memory/` holds the portable `MemoryRepository`; `json/` extends it with files. `db` is the registry of all collections. |
 | `src/domain/` | Shared types and business constants (industries, stages, the integration catalog, `defaultIcp`). |
 | `src/modules/*` | One folder per service boundary: `routes.ts` (HTTP) plus `service.ts` (logic). |
 | `src/providers/` | Vendor adapter interfaces and mock implementations. |
-| `src/events/` | `EventBus` interface and the in-memory implementation. |
+| `src/events/` | `EventBus` interface and the in-memory implementation (portable). |
 | `src/seed/` | Deterministic demo dataset and org reset helpers. |
 | `scripts/` | CLI entry points run with `tsx`. |
 | `dist/` | Build output from `npm run build` (`tsconfig.build.json` compiles `src` only). |
@@ -130,8 +140,11 @@ The backend (`backend/`) is an Express 5 + TypeScript REST API. It owns every re
 
 ```mermaid
 flowchart LR
-  subgraph HTTP["HTTP layer — routes.ts"]
-    r["route(def)<br/>zod schemas · roles · summary"]
+  subgraph Edge["Transport — lib/http.ts (Express) or mock-api/server.ts (browser)"]
+    x["createModule().route()"]
+  end
+  subgraph HTTP["Route layer — routes.ts + lib/route-runtime.ts"]
+    r["route(def) → executeRoute()<br/>zod schemas · roles · summary"]
   end
   subgraph Domain["Domain layer — service.ts / engine.ts"]
     s["xxxService objects<br/>business rules, cascades,<br/>activity logging, events"]
@@ -142,6 +155,7 @@ flowchart LR
     p["providers.*"]
     b["bus"]
   end
+  x --> r
   r --> s
   r -. "simple reads" .-> db
   s --> e
@@ -150,10 +164,12 @@ flowchart LR
   s --> b
 ```
 
-- **Routes** declare the contract: method, path, zod schemas, roles and a one-line summary. They pull typed values out of `ctx` and call a service. Simple reads and deletes sometimes use `db.*` directly in the route (for example `GET /signals/:id` and `DELETE /agent/playbooks/:id`).
+- **Transport** is a thin adapter. `lib/http.ts` turns an Express request into `executeRoute(def, { params, query, body, headers })` and writes the result back. The frontend's mock runtime does the same without Express.
+- **Routes** declare the contract: method, path, zod schemas, roles and a one-line summary. They pull typed values out of `ctx` (which has no `req` or `res`) and call a service. Simple reads and deletes sometimes use `db.*` directly in the route (for example `GET /signals/:id` and `DELETE /agent/playbooks/:id`).
 - **Services** are plain object literals (`export const accountService = { … }`) with async methods whose first parameter is `orgId`. They throw `HttpError`s from `lib/errors.ts` and may call other services.
 - **Pure logic** that needs no I/O lives in separate files so it is easy to test. `modules/scoring/engine.ts` is the example.
 - **Repositories** are the only way to reach storage. Services never touch the file system.
+- **Portability.** Nothing below the transport layer may import Node-only modules. See [Contributing](/docs/engineering/contributing#keeping-mock-mode-in-sync).
 
 ## Modules
 
@@ -187,7 +203,7 @@ Outside the prefix, `GET /health` returns `{ status, env, db, uptime }`. It is n
 <Accordions>
 <Accordion title="Naming and files">
 - One folder per service boundary under `src/modules/`. Each has `routes.ts`, and usually `service.ts`.
-- Route files export `xxxModule = createModule("<Tag>", "<basePath>")`. Register new modules in the `modules` array in `src/app.ts`.
+- Route files export `xxxModule = createModule("<Tag>", "<basePath>")`. Register new modules in the `modules` array in `src/app.ts`, and import the routes file in `frontend/src/mock-api/server.ts`.
 - Services are exported as `xxxService` object literals. Pure helpers are named exports (`normalizeDomain`, `accountWhere`, `probabilityFor`).
 - Imports use the `.js` extension (NodeNext ESM), e.g. `import { db } from "../../db/index.js"`.
 </Accordion>
@@ -213,6 +229,7 @@ Outside the prefix, `GET /health` returns `{ status, env, db, uptime }`. It is n
 <Accordion title="Responses">
 - Return plain objects, and strip server-only fields (`toPublicUser`, `toPublicApiKey`, `toPublicIntegration`).
 - Returning `undefined` produces `204 No Content`. `POST` defaults to `201`; set `status: 200` for action endpoints that don't create a resource.
+- For downloads, return `fileResponse(filename, content, contentType = "text/csv")`. Handlers never write to the response directly.
 - Attach related summaries with `withAccounts` / `withContacts` from `lib/expand.ts` instead of N+1 lookups.
 </Accordion>
 </Accordions>
@@ -231,8 +248,8 @@ Outside the prefix, `GET /health` returns `{ status, env, db, uptime }`. It is n
 ## Where to go next
 
 <Cards>
-  <Card title="Request lifecycle" href="/docs/engineering/backend/request-lifecycle" description="Middleware, route(), validation, errors and OpenAPI." />
-  <Card title="Data layer" href="/docs/engineering/backend/data-layer" description="Repository interface, JSON driver internals, Postgres plan." />
+  <Card title="Request lifecycle" href="/docs/engineering/backend/request-lifecycle" description="Middleware, route(), executeRoute(), validation, errors and OpenAPI." />
+  <Card title="Data layer" href="/docs/engineering/backend/data-layer" description="Repository interface, MemoryRepository and its drivers, Postgres plan." />
   <Card title="Auth and security" href="/docs/engineering/backend/auth-and-security" description="JWT, API keys, roles, encryption, rate limits." />
   <Card title="Scoring engine" href="/docs/engineering/backend/scoring-engine" description="Fit, intent, tiers and when re-scoring happens." />
   <Card title="Orchestration agent" href="/docs/engineering/backend/orchestration-agent" description="processSignal, playbooks, actions and drafts." />

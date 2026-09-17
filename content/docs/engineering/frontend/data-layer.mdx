@@ -1,6 +1,6 @@
 ---
 title: Data layer
-description: How the web app talks to the API, covering the fetch client, errors, the TanStack Query wrappers, per-service hooks, cache keys, invalidation and optimistic updates.
+description: How the web app talks to the API, covering the data-source switch, the request client, errors, the TanStack Query wrappers, per-service hooks, cache keys, invalidation and optimistic updates.
 icon: Database
 ---
 
@@ -38,31 +38,63 @@ flowchart LR
   Hook --> Q["useApiQuery(key, fn)"]
   Q --> RQ[("TanStack Query cache")]
   Q --> C["api.page('/accounts', filters)"]
-  C --> F["request(): fetch + Bearer + envelope"]
-  F --> API[("API")]
+  C --> F["request(): token, 401/204 handling, envelope"]
+  F --> SEND["send(method, path, query, body, token)"]
   Mut["useCreateAccount()"] --> M["useApiMutation(fn, opts)"]
   M --> C2["api.post('/accounts', body)"]
+  C2 --> F
   M -- "onSuccess: invalidate" --> RQ
   M -- "toast" --> T["sonner"]
 ```
 
-## `client.ts`: the fetch wrapper
+## Transport: `api` or `mock`
 
-### `API_URL`
+`send()` is the only place that knows where requests go:
+
+```mermaid
+flowchart TB
+  send["send(method, path, query, body, token)"] --> switch{"IS_MOCK?"}
+  switch -->|"no (DATA_SOURCE = api)"| fetch["fetch(API_URL + path + ?query)<br/>Accept / Content-Type / Authorization"]
+  fetch --> api[("Express API")]
+  switch -->|"yes (DATA_SOURCE = mock)"| imp["await import('@/mock-api/server')<br/>(lazy chunk)"]
+  imp --> mr["mockRequest({ method, path, query, body, headers })"]
+  mr --> er["executeRoute() on the synced backend code"]
+  er --> ls[("localStorage<br/>selleasy-mock-db:*")]
+  fetch --> raw["RawResponse { status, statusText, json(), text() }"]
+  mr --> raw
+  raw --> req["request(): same handling for both"]
+```
 
 ```ts title="src/lib/api/client.ts"
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1").replace(/\/$/, "")
+
+export const DATA_SOURCE: "api" | "mock" = process.env.NEXT_PUBLIC_DATA_SOURCE === "mock" ? "mock" : "api"
+export const IS_MOCK = DATA_SOURCE === "mock"
 ```
 
-The value comes from `frontend/.env.local`. Because it's a `NEXT_PUBLIC_` variable, it's inlined when the app is built, so restart `next dev` or rebuild after you change it. The login page shows the host it's connected to.
+- **`API_URL`** comes from `NEXT_PUBLIC_API_URL` (trailing slash removed). The login page shows the host it's connected to.
+- **`DATA_SOURCE`** is `"mock"` only when `NEXT_PUBLIC_DATA_SOURCE` is exactly `mock`. Anything else, including unset, means `"api"`.
+- **`IS_MOCK`** is exported from `@/lib/api` for UI hints: the login page pre-fills `jordan@acmegrowth.com` / `demo1234` and shows "Demo mode · sample data stored in this browser", and `AppHeader` shows a **Demo data** badge.
+- Both variables are `NEXT_PUBLIC_*`, so they're **inlined at build time**. Restart `next dev` or rebuild after you change them. See [Configuration](/docs/engineering/configuration#frontend).
+
+In mock mode, `send()`:
+
+1. Dynamically imports `@/mock-api/server`, so the backend copy is a separate chunk that's only loaded when mock mode is on.
+2. Converts `query` with the same `toSearchParams()` as the fetch path, then passes it as a plain object. Array values arrive as comma-joined strings, as they would over HTTP.
+3. Passes `body` as is (the dispatcher deep-copies it through JSON) and only the `authorization` header.
+4. Wraps the `{ status, json?, text? }` result in the same `RawResponse` shape that `fetch` produces. There's no `network_error` in mock mode.
+
+Everything after `send()` (401 handling, 204, raw text, the envelope) is shared, so hooks behave identically in both modes. How `mockRequest()` works is described in [Mock data mode](/docs/engineering/frontend/mock-mode).
+
+## `client.ts`: the request wrapper
 
 ### `request()`
 
-Every call goes through one private function, `request(method, path, { query, body, raw })`:
+Every call goes through one private function, `request(method, path, { query, body, raw })`, which reads the token from `useAuthStore` and calls `send()`:
 
-1. **Builds the URL.** `query` values that are `undefined`, `null` or `""` are left out. Arrays are joined with commas, which matches the API's CSV filter format. Empty arrays are left out.
-2. **Adds headers.** It always sends `Accept: application/json`. It sends `Content-Type: application/json` when there's a body, and `Authorization: Bearer <token>` when `useAuthStore` holds a token.
-3. **Handles network errors.** If `fetch` throws, it throws `ApiError(0, "network_error", "Cannot reach the API at … Is the backend running?")`.
+1. **Builds the query.** `query` values that are `undefined`, `null` or `""` are left out. Arrays are joined with commas, which matches the API's CSV filter format. Empty arrays are left out.
+2. **Adds headers.** `Authorization: Bearer <token>` when `useAuthStore` holds a token. On the `fetch` path it also always sends `Accept: application/json`, and `Content-Type: application/json` when there's a body.
+3. **Handles network errors** (`api` mode only). If `fetch` throws, it throws `ApiError(0, "network_error", "Cannot reach the API at … Is the backend running?")`.
 4. **Handles `401`.** If the response is `401` and a token was sent, it calls `useAuthStore.getState().clear()`. The `(app)` layout then sees there's no session and redirects to `/login?next=…`.
 5. **Handles `204`.** It resolves to `undefined`.
 6. **Handles `raw` requests** (`api.text`). It returns the response text, or throws `ApiError(status, "request_failed", statusText)`.

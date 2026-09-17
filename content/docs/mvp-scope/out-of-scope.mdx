@@ -1,0 +1,51 @@
+---
+title: Out of scope
+description: Capabilities deliberately deferred from the SellEasy MVP, why each was deferred, and when it is planned.
+icon: Ban
+---
+
+Deferring work is a decision, not an omission. Each item below was left out of the MVP for a stated reason and has a planned home on the [roadmap](/docs/roadmap). If a design partner needs one of them, raise it through the change process in [Risks & assumptions](/docs/mvp-scope/risks-and-assumptions#scope-change-rule).
+
+## Deferred capabilities
+
+| Capability | Why it is deferred | Planned | Workaround in the MVP |
+|---|---|---|---|
+| **Salesforce and Attio sync** | Salesforce needs a connected app, AppExchange security review and complex object mapping; MVP targets HubSpot users | [Phase 4](/docs/roadmap/phase-4-enterprise-and-analytics) | Deal CSV export |
+| **Enterprise SSO (SAML / OIDC), MFA** | Not needed by mid-market design partners; managed IdP choice still open | Phase 4 | Strong passwords, short sessions |
+| **Audit log** | Entity versions cover most needs for pilots | Phase 4 | Entity version history, activity timeline |
+| **Billing, plans and usage metering** | Pilots run on contracts or invoices; pricing still being validated | Phase 4 | Manual invoicing; seat limits already enforced |
+| **SOC 2 report** | Takes months of evidence; pilots accept a security questionnaire | Phase 4 (readiness) | Security overview document, DPA |
+| **Redshift warehouse, historical snapshots** | Operational analytics are enough for pilot volumes | Phase 4 | Built-in analytics; CSV export |
+| **Call intelligence (Fireflies)** | Not needed to prove the signal → meeting loop | Phase 4 | None |
+| **LinkedIn automation (HeyReach)** | Account-safety risk and extra vendor; email proves the loop first | [Phase 3](/docs/roadmap/phase-3-scale-and-intelligence) | LinkedIn steps stay as manual tasks |
+| **Instantly / Mailpool, warm-up networks** | SES covers pilot volumes; cold-email scale is a GA concern | Phase 3 | SES with conservative daily limits |
+| **Bombora topic surge** | Enterprise contract with long lead time | [Phase 2](/docs/roadmap/phase-2-real-integrations) (Could) or Phase 3 | RB2B and Trigify signals |
+| **Apify / Linkup scraping and research agent** | Research quality needs evaluation work; not required for first drafts | Phase 3 | Signal context in drafts |
+| **Multiple playbooks per signal, playbook priority UI** | Product decision still open | Phase 3 | Keep playbooks mutually exclusive |
+| **Multiple ICPs / segments** | Pilots have one motion each | Phase 3+ | One ICP per workspace |
+| **Fully autonomous auto-send at scale** | Needs guardrails (caps, allow-lists, sentiment checks) | Phase 3 | Approval on by default; auto-send per playbook only with caps |
+| **OpenSearch** | Substring or Postgres search is fine at pilot scale | Phase 3 | Existing ⌘K search |
+| **Mobile apps** | Reps work at a desk; responsive web is enough | Not planned | Responsive web |
+| **EU data residency, multi-region** | North America first | Beyond this plan | — |
+| **Public API beyond the signals webhook** | Scopes exist but are not enforced on other routes | Phase 4 | Signals webhook; CSV import and export |
+| **Service extraction (microservices)** | Not needed at MVP scale | Beyond this plan | Modular monolith ([ADR-01](/docs/architecture/decisions#adr-01--modular-monolith-with-service-shaped-modules)) |
+| **Simulate signal in production** | Demo helper only | Removed before launch | Stakeholder demo keeps it in mock mode |
+
+## Non-goals (not planned at all)
+
+These come from [Problem & vision](/docs/product/problem-and-vision#non-goals) and stay out of scope beyond the MVP:
+
+- Replacing the CRM as the system of record for revenue.
+- Becoming a contact database or data vendor.
+- Becoming an email service provider.
+- Sending AI-written messages without human oversight **by default**.
+- Becoming a general-purpose BI tool.
+
+## Kept for demos, not for customers
+
+| Item | Where it stays |
+|---|---|
+| Simulate signal button | Local development and mock-mode demos |
+| Admin workspace reset | Local development and mock-mode demos (forced off in production) |
+| Demo dataset (`seed:demo`) | Local development, staging and mock mode — never production |
+| Mock provider adapters | Default for local development, tests and mock mode |

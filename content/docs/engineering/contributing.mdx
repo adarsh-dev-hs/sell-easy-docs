@@ -69,7 +69,8 @@ No formatter config is committed, so match the existing style. If you run Pretti
 | Naming | `camelCase` for values, `PascalCase` for types and components, `SCREAMING_SNAKE` for constants, and `kebab-case` for file names (`deal-sheet.tsx`) |
 | Services | Export one object per module (`accountService`), with async methods that take `orgId` first |
 | Routes | One `route({...})` per endpoint, with zod schemas declared next to it. Include a `summary` (shown in Swagger) and a `description` when there are filters or sort fields. |
-| Errors | Throw `badRequest`, `notFound`, `conflict` or `forbidden`. Never send a response by hand from a service. |
+| Errors | Throw `badRequest`, `notFound`, `conflict` or `forbidden`. Never send a response by hand from a service or handler. |
+| Portability | Code that runs in mock mode (see [below](#keeping-mock-mode-in-sync)) must not import Node-only or Express modules. |
 | Comments | Explain *why*. Use JSDoc on exported helpers. No commented-out code. |
 | React | Function components and hooks only. No `eslint-disable`. Follow the [lint rules](/docs/engineering/frontend/ui-conventions#lint-rules-to-respect). |
 
@@ -98,7 +99,8 @@ No formatter config is committed, so match the existing style. If you run Pretti
 
 ### Declare the routes
 
-- Use `createModule("<Tag>", "/<base>")` and one `route()` for each endpoint.
+- Use `createModule("<Tag>", "/<base>")` and one `route()` for each endpoint. Handlers receive `{ body, query, params, auth, orgId }` only; there is no `req` or `res`.
+- **Downloads:** return `fileResponse(filename, content, contentType?)` instead of writing to the response.
 - **Validation:** use `body`, `query` and `params` zod schemas, and reuse `listQuery`, `csvList`, `boolQuery`, `idParams`, `idList` and `parseSort`.
 - **Roles:** leave the default unless you need something different, such as `atLeast("admin")` or `["owner"]`.
 - **Status:** set `status: 200` for action-style POSTs. Return `undefined` to get `204`, and use `paged()` for lists.
@@ -110,7 +112,7 @@ No formatter config is committed, so match the existing style. If you run Pretti
 
 ### Register and test
 
-- Add the module to the `modules` array in `src/app.ts`.
+- Add the module to the `modules` array in `src/app.ts`, **and** add `import "./core/modules/<name>/routes"` to `frontend/src/mock-api/server.ts` so mock mode registers it too.
 - Add supertest coverage to `tests/api.test.ts`: the happy path, validation, the role check and not-found.
 - Run `npm run typecheck && npm test`, then check the endpoint in Swagger.
 
@@ -121,7 +123,8 @@ No formatter config is committed, so match the existing style. If you run Pretti
 
 - Update the types and hooks in `frontend/`.
 - Update the docs: the API reference page, plus the data model page if you changed data.
-- If you added configuration, update `.env.example`, `src/config.ts` and [Configuration](/docs/engineering/configuration).
+- If you added configuration, update `.env.example`, `src/config.ts` and [Configuration](/docs/engineering/configuration). If the new key is read by shared code, add it to `frontend/src/mock-api/overrides/config.ts` as well.
+- Run `npm run mock:sync` in `frontend/` and commit the regenerated `src/mock-api/core` in the frontend PR.
 
 </Step>
 </Steps>
@@ -139,6 +142,32 @@ No formatter config is committed, so match the existing style. If you run Pretti
 - [ ] Check the page in light **and** dark mode, at mobile width, and as a viewer.
 
 The full walkthrough is in [Adding a page](/docs/engineering/frontend/adding-a-page).
+
+## Keeping mock mode in sync
+
+The frontend's [mock data mode](/docs/engineering/frontend/mock-mode) runs a **generated copy** of `backend/src` in the browser. Two rules keep it working.
+
+### Rule 1: re-sync after every backend change
+
+```bash
+cd frontend
+npm run mock:sync     # regenerate src/mock-api/core from ../backend/src
+npm run mock:check    # verify (this is what CI should run)
+```
+
+The root `package.json` has the same two scripts (`npm run mock:sync`, `npm run mock:check`). Commit the regenerated `src/mock-api/core` together with the backend change. Because backend and frontend are separate repositories, that means a frontend PR for every backend PR that touches `backend/src`, even when no UI changes. Never edit files in `core/` by hand; the next sync overwrites them.
+
+### Rule 2: keep shared backend code portable
+
+Everything the sync copies must run in a browser. That covers `lib/route-runtime.ts`, `lib/roles.ts`, `lib/ids.ts`, `lib/errors.ts`, `lib/expand.ts`, `db/memory`, `db/repository.ts`, `db/index.ts`, `events/bus.ts`, `domain/`, `modules/`, `providers/` and `seed/`.
+
+- **Don't import** `node:*` modules, `express`, `jsonwebtoken`, `pino`, `dotenv`, `helmet`, `cors` or `compression` there. `mock:sync` refuses to generate a file that does.
+- **Don't use Node globals** such as `Buffer`, `process` or `__dirname`. The sync script can't detect these, so they fail only at runtime in the browser. Use `globalThis.crypto`, `TextEncoder`, `queueMicrotask` and similar web-standard APIs instead.
+- **Don't reach into Express** from a handler. Use the `RouteContext` and `fileResponse()`.
+- **Import Node-only code only through a file that has a browser override:** `config.ts`, `lib/logger.ts`, `lib/crypto.ts`, `lib/http.ts`, `middleware/auth.ts` or `db/json/json-repository.ts`.
+- **If a new file must use a Node API**, add a browser replacement at the same relative path under `frontend/src/mock-api/overrides/` with the **same exports**, or add the file to `SKIP` in `scripts/sync-mock-core.mjs` if nothing in the browser imports it.
+- **If a new package has a separate browser build**, add a rewrite to `PACKAGE_REWRITES` in the sync script (as for `csv-parse/sync`), and install the package in `frontend/` too.
+- **If you change an overridden file's exports** (for example, add a function to `lib/crypto.ts`), mirror the change in its override.
 
 ## Keeping types in sync
 
@@ -195,7 +224,8 @@ A change is done when all of these hold:
 | Area | Requirement |
 |---|---|
 | Backend | `npm run typecheck` passes; `npm test` passes; `npm run build` succeeds; new endpoints have tests; Swagger shows the correct summary and roles |
-| Frontend | `npm run lint` is clean (no warnings added); `npx tsc --noEmit` passes; `npm run build` succeeds |
+| Frontend | `npm run lint` is clean (no warnings added); `npx tsc --noEmit` passes; `npm run build` succeeds; `npm run mock:check` passes |
+| Mock mode | After a `backend/src` change, `src/mock-api/core` was regenerated and committed, and the changed screens work with `npm run dev:mock` |
 | Behaviour | Works against a fresh `npm run setup` workspace **and** the demo dataset; handles the empty, loading and error states; the role gating is correct |
 | Contract | Frontend types and hooks match the API; there are no unhandled breaking changes |
 | Docs | The API reference and the relevant engineering or product pages are updated; `docs` builds |

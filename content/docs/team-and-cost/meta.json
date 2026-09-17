@@ -1,0 +1,7 @@
+{
+  "title": "Team & cost",
+  "description": "Estimated team, budget and run costs",
+  "icon": "Users",
+  "root": true,
+  "pages": ["index", "team-plan", "people-cost", "infrastructure-cost", "vendor-and-ai-cost", "total-budget", "assumptions"]
+}

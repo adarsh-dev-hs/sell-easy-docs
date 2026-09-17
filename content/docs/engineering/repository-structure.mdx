@@ -26,7 +26,7 @@ SellEasy lives in one working directory with three apps side by side. Each app h
 
 | Path | Purpose |
 |---|---|
-| `package.json` | Scripts that orchestrate both apps: `install:all`, `setup`, `dev` and `start` (both use `concurrently`), `build`, `test`, `seed:demo` and `bootstrap`. Its only dependency is `concurrently`. |
+| `package.json` | Scripts that orchestrate the apps: `install:all`, `setup`, `dev` and `start` (both use `concurrently`), `build`, `test`, `seed:demo`, `bootstrap`, `docs`, `docs:build`, and the mock-mode scripts `mock:sync`, `mock:check` and `dev:mock` (which uses `cross-env` to set `NEXT_PUBLIC_DATA_SOURCE=mock`). Its only dependencies are `concurrently` and `cross-env`. |
 | `scripts/setup.mjs` | One-time local setup. Creates `.env` files with generated secrets, then bootstraps or seeds the database. See [Getting started](/docs/engineering/getting-started#what-npm-run-setup-does). |
 | `plan.md` | The architecture and integration plan: API surface, env keys, delivery phases, decisions and implementation status |
 | `README.md` | Quick start and how to load real data |
@@ -54,7 +54,9 @@ SellEasy lives in one working directory with three apps side by side. Each app h
       <File name="app.ts" />
       <File name="config.ts" />
       <Folder name="lib">
+        <File name="route-runtime.ts" />
         <File name="http.ts" />
+        <File name="roles.ts" />
         <File name="openapi.ts" />
         <File name="errors.ts" />
         <File name="expand.ts" />
@@ -69,6 +71,9 @@ SellEasy lives in one working directory with three apps side by side. Each app h
       <Folder name="db">
         <File name="index.ts" />
         <File name="repository.ts" />
+        <Folder name="memory">
+          <File name="memory-repository.ts" />
+        </Folder>
         <Folder name="json">
           <File name="json-repository.ts" />
         </Folder>
@@ -122,20 +127,24 @@ SellEasy lives in one working directory with three apps side by side. Each app h
 | `src/server.ts` | Entry point. Warns if no organization exists, starts listening on `PORT`, and shuts down cleanly on SIGINT and SIGTERM. |
 | `src/app.ts` | `createApp()`. Sets up the middleware stack (pino-http, helmet, cors, compression, JSON body limit), `/health`, the rate-limited `/api/v1` router, all 18 modules, `openapi.json` and the Swagger UI, then the 404 and error handlers. |
 | `src/config.ts` | Loads the environment with zod. The process exits with a readable list of problems if a value is invalid. Also derives `corsOrigins`, `dataDir`, `enableSimulation` and `enableAdminReset`. |
-| `src/lib/http.ts` | `createModule(tag, basePath)` and `route({...})`. Handles auth mode, role checks, zod parsing, the `{ data }` envelope, status codes and OpenAPI registration. Also exports the shared schemas: `listQuery`, `csvList`, `boolQuery`, `idParams`, `idList`, and the `parseSort` helper. |
+| `src/lib/route-runtime.ts` | The transport-agnostic route runtime (no Node or Express imports). `RouteDef` and `RouteContext`, `executeRoute()` (auth mode, role checks, zod parsing, the `{ data }` envelope, status codes), `errorOutput()`, `paged()`, `fileResponse()`, `routeRegistry`, and the shared schemas `listQuery`, `csvList`, `boolQuery`, `idParams`, `idList` plus the `parseSort` helper. |
+| `src/lib/http.ts` | `createModule(tag, basePath)` and `route({...})`. Registers each definition in `routeRegistry` (for OpenAPI) and binds it to an Express router. Re-exports everything from `route-runtime.ts`. |
+| `src/lib/roles.ts` | `AuthContext`, `atLeast(role)` and `assertRole()` |
 | `src/lib/openapi.ts` | Builds the OpenAPI 3.1 document from the route registry |
 | `src/lib/errors.ts` | `HttpError` and its helpers: `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `unprocessable`, `must` |
 | `src/lib/expand.ts` | `withAccounts` and `withContacts`, which attach `account` and `contact` summaries to list items |
-| `src/lib/crypto.ts` | AES-256-GCM `encrypt` and `decrypt`, `sha256`, `mask`, `randomSecret` |
-| `src/middleware/auth.ts` | JWT signing and verification, API-key authentication, `assertRole`, `atLeast(role)` |
+| `src/lib/crypto.ts` | AES-256-GCM `encrypt` and `decrypt`, `sha256`, `mask`, `randomSecret` (built on `randomToken`) |
+| `src/lib/ids.ts` | `newId(prefix)`, `randomToken`, `randomHex`, `nowIso`, `DAY_MS`. Uses the Web Crypto RNG, so it runs in Node and browsers. |
+| `src/middleware/auth.ts` | `signToken`, `authenticateBearer`, `authenticateApiKey` and `authenticateRequest` (JWT and API-key authentication). Re-exports `assertRole` and `atLeast`. |
 | `src/middleware/error.ts` | The error envelope. Maps body-parser failures to `invalid_json` and `payload_too_large`. |
 | `src/db/repository.ts` | The storage-agnostic `Repository<T>` interface and the `Where<T>` query language |
-| `src/db/json/json-repository.ts` | The JSON-file driver: in-memory cache, per-collection write queue, atomic temp-file-then-rename writes |
+| `src/db/memory/memory-repository.ts` | `MemoryRepository`: the portable in-memory collection with all query logic, the per-collection write queue and `loadRows()`/`persistRows()` hooks. Also exports `matches` and `sortRecords`. |
+| `src/db/json/json-repository.ts` | The JSON-file driver: `extends MemoryRepository` and adds file loading and atomic temp-file-then-rename writes |
 | `src/db/postgres/` | Placeholder for the Postgres driver (it throws if selected) and an empty `migrations/` folder |
 | `src/db/index.ts` | `db`, the registry of all 19 collections, with the file name and ID prefix for each |
 | `src/domain/types.ts` | **Source of truth** for the domain types |
 | `src/domain/constants.ts` | Business constants: industries, stages, deal probabilities, the integration catalog, the default ICP and API scopes. `GET /meta` serves them. |
-| `src/events/bus.ts` | The in-memory `EventBus`, with domain events such as `signal.ingested` and `deal.stage_changed` |
+| `src/events/bus.ts` | The in-memory `EventBus` (portable, no `node:events`), with domain events such as `signal.ingested` and `deal.stage_changed` |
 | `src/providers/index.ts` | Vendor adapter interfaces and their **mock** implementations |
 | `src/modules/<service>/routes.ts` | The HTTP contract for a service |
 | `src/modules/<service>/service.ts` | The business logic for a service. Some modules have extra files, for example `scoring/engine.ts` and `outreach/enrollment.ts`. |
@@ -155,7 +164,11 @@ The module folders map to API tags like this: `organization` holds both the **Or
     <File name="components.json" />
     <File name="next.config.ts" />
     <File name="eslint.config.mjs" />
+    <File name="tsconfig.json" />
     <File name="AGENTS.md" />
+    <Folder name="scripts">
+      <File name="sync-mock-core.mjs" />
+    </Folder>
     <Folder name="src" defaultOpen>
       <Folder name="app" defaultOpen>
         <File name="layout.tsx" />
@@ -209,6 +222,31 @@ The module folders map to API tags like this: `organization` holds both the **Or
       <Folder name="hooks">
         <File name="use-mobile.ts" />
       </Folder>
+      <Folder name="mock-api">
+        <File name="server.ts" />
+        <Folder name="core">
+          <File name="(generated copy of backend/src)" />
+        </Folder>
+        <Folder name="overrides">
+          <File name="config.ts" />
+          <Folder name="lib">
+            <File name="crypto.ts" />
+            <File name="http.ts" />
+            <File name="logger.ts" />
+          </Folder>
+          <Folder name="middleware">
+            <File name="auth.ts" />
+          </Folder>
+          <Folder name="db">
+            <Folder name="json">
+              <File name="json-repository.ts" />
+            </Folder>
+          </Folder>
+        </Folder>
+        <Folder name="shims">
+          <File name="express-rate-limit.ts" />
+        </Folder>
+      </Folder>
     </Folder>
   </Folder>
 </Files>
@@ -225,7 +263,7 @@ The module folders map to API tags like this: `organization` holds both the **Or
 | `src/components/shared/` | Shared building blocks: `PageHeader`, `StatCard`, score and tier badges, status badges, avatars, `ConfirmDialog`, `EmptyState`, `QueryError`, `TableSkeleton` |
 | `src/components/<feature>/` | Components for a single feature: dialogs, sheets, tables, tabs |
 | `src/components/providers.tsx` | Sets up QueryClient, ThemeProvider, TooltipProvider, `SessionGate` and the toaster |
-| `src/lib/api/client.ts` | Fetch wrapper, `ApiError`, `errorMessage`, `downloadText` |
+| `src/lib/api/client.ts` | Request wrapper with the data-source switch (`DATA_SOURCE`, `IS_MOCK`), `API_URL`, `ApiError`, `errorMessage`, `downloadText` |
 | `src/lib/api/query.ts` | `makeQueryClient`, `useApiQuery`, `useApiMutation` |
 | `src/lib/api/auth-store.ts` | The persisted zustand session store |
 | `src/lib/api/hooks/*.ts` | Typed query and mutation hooks, one file per service |
@@ -233,6 +271,14 @@ The module folders map to API tags like this: `organization` holds both the **Or
 | `src/lib/types.ts` | API contract types, mirrored from `backend/src/domain/types.ts` |
 | `src/lib/constants.ts` | UI labels and styles, such as tier colours and status labels |
 | `src/lib/format.ts` | Formatting helpers: `currency`, `percent`, `timeAgo`, `shortDate`, `initials` |
+| `src/mock-api/server.ts` | The in-browser API used when `NEXT_PUBLIC_DATA_SOURCE=mock`: `mockRequest()`, demo seeding and `resetMockDatabase()`. Loaded lazily by `client.ts`. See [Mock data mode](/docs/engineering/frontend/mock-mode). |
+| `src/mock-api/core/` | **Generated.** A copy of `backend/src` with browser overrides applied. Never edit it by hand; run `npm run mock:sync`. Committed so the frontend builds without the backend folder. |
+| `src/mock-api/overrides/` | Browser replacements for the backend files that need Node or Express. Copied over the same paths in `core/`. |
+| `src/mock-api/shims/` | A no-op `express-rate-limit` for the browser |
+| `scripts/sync-mock-core.mjs` | Generates `src/mock-api/core` (`npm run mock:sync`) or checks that it's current (`npm run mock:check`) |
+| `.env.example` | Documents `NEXT_PUBLIC_DATA_SOURCE` and `NEXT_PUBLIC_API_URL` |
+| `eslint.config.mjs` | Next.js core-web-vitals and TypeScript rules. Ignores `src/mock-api/core/**` and `src/mock-api/overrides/**`. |
+| `tsconfig.json` | Strict TypeScript with the `@/*` alias. Excludes `src/mock-api/overrides` and `scripts` (the overrides are type-checked once they're copied into `core/`). |
 | `components.json` | shadcn config: `radix-nova` style, neutral base colour, lucide icons, `@/` aliases |
 | `next.config.ts` | Sets `turbopack.root` to the frontend folder. Without it, Turbopack picks up the root `package.json`. |
 | `AGENTS.md` / `CLAUDE.md` | Notes for AI coding agents, written by `next dev`. Next.js 16 has breaking changes, so check `node_modules/next/dist/docs/`. |

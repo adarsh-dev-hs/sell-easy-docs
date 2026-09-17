@@ -1,0 +1,180 @@
+---
+title: Data flows
+description: The key flows through SellEasy as diagrams — signal to action, import and dedup, enrichment, outreach and replies, CRM sync and analytics — with what is real today.
+icon: Workflow
+---
+
+Each flow below shows how data moves through SellEasy, then notes what is real today and what changes in the target platform. Solid arrows are built. Dotted arrows depend on a mocked or planned component.
+
+## 1 · Signal ingestion → scoring → playbook → action
+
+This is the core loop and the product's main value.
+
+```mermaid
+flowchart LR
+  subgraph Sources
+    rb2b["RB2B<br/>website visitors"]
+    trig["Trigify<br/>social · job change"]
+    bom["Bombora<br/>topic surge"]
+    zap["Zapier / warehouse<br/>generic webhook"]
+    man["Manual entry"]
+    sim["Simulate<br/>(demo only)"]
+  end
+  rb2b -.-> wh
+  trig -.-> wh
+  bom -.-> poll["Scheduled pull"]
+  zap --> wh["POST /webhooks/signals<br/>API key"]
+  man --> ing
+  sim --> ing
+  wh --> ing["Signal ingestion<br/>resolve account by domain"]
+  poll -.-> ing
+  ing --> sig[("signals")]
+  ing --> evt{{"signal.ingested"}}
+  evt --> ag["Agent<br/>(inline today → queue worker)"]
+  ag --> rs["Re-score<br/>fit + intent → tier"]
+  rs --> pb{"Matching<br/>playbook?"}
+  pb -- no --> skip["Run skipped"]
+  pb -- yes --> acts["Actions"]
+  acts --> route["Route owner"]
+  acts -.-> enrich["Enrich"]
+  acts -.-> draft["Draft outreach (Claude)"]
+  acts --> deal["Create deal"]
+  acts --> notify["Notify"]
+  draft --> appr["Approval queue"]
+  appr --> enroll["Enroll in sequence"]
+```
+
+| Step | Today | Target |
+|---|---|---|
+| Vendor delivery | Generic webhook only; vendors must be mapped externally (for example with Zapier) | Native, HMAC-verified RB2B and Trigify webhooks; scheduled Bombora pull |
+| Ingestion | Synchronous; batches ≤ 100 processed one at a time | Validate, store, publish, return `202` immediately |
+| Agent | Runs inside the request | SQS worker, idempotent per signal, retries and a dead-letter queue |
+| Draft | Template | Claude with account, contact and signal context |
+
+## 2 · Import and dedup
+
+```mermaid
+flowchart TB
+  file["CSV / JSON file<br/>(browser upload)"] --> parse["Parse + column aliases"]
+  parse --> validate["Validate rows (zod)"]
+  validate --> dry{"Dry run?"}
+  dry -- yes --> report["Preview: created / updated / skipped / errors"]
+  dry -- no --> match{"Existing record?<br/>domain (accounts) · email (contacts)"}
+  match -- "no" --> create["Create + score"]
+  match -- "yes, mode = skip" --> skipr["Skip row"]
+  match -- "yes, mode = update" --> upd["Update + version entry + re-score"]
+  create --> result["Per-row result report"]
+  skipr --> result
+  upd --> result
+  manual["Manual / API create"] --> dup{"Same normalized domain?"}
+  dup -- yes --> flag["Create, flag duplicateOf"]
+  flag --> review["Duplicates tab → merge or dismiss"]
+```
+
+- **Today:** fully built. The file travels inline as JSON, limited to 5 MB.
+- **Target:** large files go to S3 through presigned uploads and are processed by a background job, with progress shown in the UI. Optional enrichment and email verification run after import.
+
+## 3 · Enrichment waterfall
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant T as Trigger<br/>(user, bulk, agent, import)
+  participant E as Entity service
+  participant W as Waterfall
+  participant P1 as Provider 1 (e.g. Clearbit)
+  participant P2 as Provider 2 (e.g. Apollo)
+  participant P3 as Provider 3 (e.g. FullEnrich)
+  participant R as Accounts store
+
+  T->>E: Enrich account
+  E->>W: Ordered, connected providers with "Use in waterfall"
+  W->>P1: Lookup by domain
+  P1-->>W: Partial match (firmographics)
+  W->>P2: Fill missing fields
+  P2-->>W: Contacts + titles
+  W->>P3: Missing emails / phones only
+  P3-->>W: Emails
+  W-->>E: Merged patch + sources (respect "overwrite existing")
+  E->>R: Update, version entry, enrichedAt, sources
+  E->>E: Re-score if firmographics changed
+```
+
+- **Today:** the order is stored and read, but a single mock produces the patch and names the first two providers as sources.
+- **Target:** real adapters that stop on a full match and fall through on a miss. Per-provider cost caps, caching of recent lookups, and a Step Functions workflow for bulk runs.
+
+## 4 · Outreach and reply
+
+```mermaid
+flowchart LR
+  appr["Approved draft"] -.-> send1["Send first touch<br/>(email adapter)"]
+  appr --> enr["Enrollment<br/>status active"]
+  enr -.-> sched["Scheduler<br/>every minute"]
+  sched -.-> q["Outreach queue"]
+  q -.-> worker["Sender worker<br/>window · mailbox limits"]
+  worker -.-> ses["SES / Instantly / Mailpool"]
+  worker -.-> hey["HeyReach (LinkedIn)"]
+  worker -.-> step["Advance step, update stats"]
+  ses -.-> inbound["Inbound replies<br/>SES inbound / vendor webhooks"]
+  inbound -.-> classify["Classify sentiment<br/>(Claude fast model)"]
+  classify -.-> inbox["Inbox message"]
+  classify -.-> stop["Stop on reply · bounce · unsubscribe"]
+  inbox --> book["Book meeting"]
+  book --> deal["Deal created / advanced"]
+```
+
+- **Today:** enrollment, inbox, sentiment labels and "book meeting" are built. Nothing is sent, steps never advance, and inbox messages come from seed data.
+- **Target:** this is the largest single build in [Phase 2](/docs/roadmap/phase-2-real-integrations). Deliverability tooling (warm-up, DNS checks, health from real bounce data) follows in [Phase 3](/docs/roadmap/phase-3-scale-and-intelligence).
+
+## 5 · Deal → CRM sync
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant P as Pipeline service
+  participant Q as CRM sync worker
+  participant C as CRM (HubSpot first)
+  participant S as Deals store
+
+  P->>S: Deal created or moved (agent, meeting, user)
+  P->>Q: deal.changed event
+  Q->>C: Upsert company, contact, deal (OAuth token)
+  C-->>Q: CRM ids
+  Q->>S: Save crmId, syncedAt
+  Q->>C: Write back score and tier (if enabled)
+  C-->>Q: Webhook — deal changed in CRM
+  Q->>Q: Apply conflict policy<br/>most recent / CRM wins / SellEasy wins
+  Q->>S: Update deal
+```
+
+- **Today:** "Sync to CRM" requires a connected CRM entry and writes a fake CRM id. It is push-only and manual.
+- **Target:** automatic two-way sync, starting with HubSpot. Attio and Salesforce follow in [Phase 4](/docs/roadmap/phase-4-enterprise-and-analytics). Which system owns a deal is an open product decision ([Product roadmap & status](/docs/product/roadmap#open-questions)).
+
+## 6 · Analytics aggregation
+
+```mermaid
+flowchart LR
+  subgraph Today
+    req["Dashboard / Analytics request"] --> scan["Load whole collections<br/>aggregate in the API"]
+    scan --> resp["Response"]
+  end
+  subgraph Target
+    evts{{"Domain events<br/>signal · run · draft · email · deal"}} --> fh["Firehose / batch export"]
+    oltp[("PostgreSQL")] --> fh
+    fh --> rs[("Redshift<br/>facts + daily snapshots")]
+    rs --> agg["Pre-computed aggregates"]
+    agg --> cache[("Redis cache")]
+    cache --> api["Analytics API"]
+    ff["Fireflies calls"] -.-> rs
+  end
+```
+
+- **Today:** correct but computed on each request, so dashboards slow down as data grows.
+- **Phase 3:** Redis caches the heavy aggregates, and SQL aggregates replace in-memory scans.
+- **Phase 4:** a Redshift warehouse adds history, custom ranges, attribution and the agent-influenced pipeline metric.
+
+## Related
+
+- [Integrations landscape](/docs/architecture/integrations-landscape)
+- [User journeys](/docs/product/user-journeys)
+- [Engineering → Events and providers](/docs/engineering/backend/events-and-providers)

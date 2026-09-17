@@ -1,0 +1,122 @@
+---
+title: Assumptions
+description: Every assumption behind the SellEasy team and cost estimates, how to update the model, and which inputs move the total the most.
+icon: SlidersHorizontal
+---
+
+This page lists every assumption behind the numbers in this tab. When an assumption changes, update it here first, then follow [How to update the model](#how-to-update-the-model).
+
+## General
+
+| # | Assumption | Value used |
+|---|---|---|
+| G1 | Currency | USD; India costs converted at **₹85 = $1** (a ±5% FX move changes India-based costs by about ±5%) |
+| G2 | Start date | Monday **5 October 2026**; month 1 = October 2026, month 9 = June 2027 |
+| G3 | Horizon | 6 months (to GA) and 9 months (to enterprise release) |
+| G4 | Month length | Calendar months; phase dates in the [roadmap](/docs/roadmap) are approximate |
+| G5 | Costs are gross | Revenue, grants, credits (for example AWS Activate) and tax effects are excluded |
+| G6 | Inflation and raises | None within the 9-month horizon |
+| G7 | Contingency | 10–15%, 12.5% used in summaries |
+| G8 | Scope | As in [Roadmap](/docs/roadmap) and [MVP scope](/docs/mvp-scope); marketing spend, sales commissions, office, legal entity setup and founder salaries are **excluded** |
+
+## People
+
+| # | Assumption | Value used |
+|---|---|---|
+| P1 | Team and ramp | As in [Team plan](/docs/team-and-cost/team-plan): 5.5 FTE in M1, 8.0 in M2–M3, 8.5 in M4, 9.5 from M5 |
+| P2 | Seniority | Mostly senior; QA mid/senior; lead engineer staff-level |
+| P3 | Fully-loaded multiplier | US ~1.25–1.35× base; India ~1.15–1.25× CTC-based cost |
+| P4 | US bands | Senior engineers $175k–$250k; lead $230k–$300k; ML $220k–$290k; PM $180k–$240k (fully loaded) |
+| P5 | India bands | Senior engineers $32k–$65k; lead $60k–$95k; ML $50k–$85k; PM $42k–$70k (fully loaded, USD) |
+| P6 | Blended split | US: lead engineer, PM, GTM. India: everyone else |
+| P7 | Part-time roles | ML/LLM engineer, DevOps and designer at 0.5 FTE, priced at 50% of a full-time rate |
+| P8 | Hiring on time | Every role starts in the planned month; recruiting fees are inside the loaded rate |
+| P9 | Equity | Excluded |
+| P10 | Productivity | Blended and India-heavy teams assumed to deliver the same scope on the same timeline, with daily time-zone overlap |
+
+## Infrastructure
+
+| # | Assumption | Value used |
+|---|---|---|
+| I1 | Cloud and region | AWS us-east-1, on-demand, no Savings Plans during the build |
+| I2 | Architecture | [Target architecture](/docs/architecture/target-architecture), introduced by phase |
+| I3 | MVP scale | ≤ 20 workspaces, ≤ 100 users, ~50k signals and ~20k emails per month |
+| I4 | Growth scale | ~200 workspaces, ~2,000 users, ~2M signals and ~1M emails per month |
+| I5 | Environments | Production, staging, development/previews, mock-mode demo on Vercel |
+| I6 | Build ramp | $0.6k in M1 rising to $4.5k in M9 (expected); low ×0.6, high ×1.6 |
+| I7 | Excluded | AWS support plans, tax, Marketplace purchases |
+
+## Vendors, AI and tooling
+
+| # | Assumption | Value used |
+|---|---|---|
+| V1 | Credential model | Customers bring their own vendor keys; SellEasy pays for dev, sandbox and pilot plans only |
+| V2 | Vendor prices | Indicative public tiers; quote-based vendors **must be verified** |
+| V3 | Bombora | Not in the expected case; included in the high case |
+| V4 | Vendor ramp | $0.5k in M1 rising to $5k from M7 (expected); low ×0.5, high ×1.8 |
+| A1 | Claude prices | Opus 5 $5 / $25; Sonnet 5 $2 / $10; Haiku 4.5 $1 / $5 per million input / output tokens; cached reads ~10% of input; Batch API ~50% off; web search $10 per 1,000 — **assumption, check current Anthropic pricing** |
+| A2 | Tokens per task | Draft 3,000 in / 800 out; reply 1,500 / 200; research 20,000 / 2,000 + 5 searches |
+| A3 | Volumes | Pilot 200 drafts/day → growth 5,000 drafts/day ([scenarios](/docs/team-and-cost/vendor-and-ai-cost#monthly-scenarios)) |
+| A4 | Regeneration factor | 1.2 |
+| A5 | Build-period Claude spend | $0.2k in M1 rising to $3.5k in M9 (expected); low ×0.6, high ×1.6 |
+| T1 | Tooling | ~$250 per FTE per month (expected); low ×0.8, high ×1.3 |
+| C1 | Security and compliance | Pen test $8k (M4), retest $4k (M6), compliance platform $15k (M7), policies and legal $10k (M8), SOC 2 Type I auditor $15k (M9); low ×0.6, high ×1.7 |
+
+## How to update the model
+
+<Steps>
+<Step>
+**Change the input** in the tables above (for example a new salary band, a signed vendor quote or a different start date).
+</Step>
+<Step>
+**Recompute people cost:** for each role, monthly rate = annual fully-loaded cost ÷ 12; multiply by the FTE in each month from [Team plan](/docs/team-and-cost/team-plan#fte-by-month); sum months 1–6 and 1–9. Do this for low, expected and high bands.
+</Step>
+<Step>
+**Recompute non-people lines:** update the monthly ramps for infrastructure, vendors, Claude, tooling and compliance; apply the low and high multipliers.
+</Step>
+<Step>
+**Add up** people + non-people per scenario; apply contingency (10%, 12.5%, 15%).
+</Step>
+<Step>
+**Update the pages** in this order: [People cost](/docs/team-and-cost/people-cost) → [Infrastructure cost](/docs/team-and-cost/infrastructure-cost) → [Vendor & AI cost](/docs/team-and-cost/vendor-and-ai-cost) → [Total budget](/docs/team-and-cost/total-budget) → [overview](/docs/team-and-cost).
+</Step>
+<Step>
+**Record the change** in the change log below with the date and reason.
+</Step>
+</Steps>
+
+A spreadsheet with one sheet per page (rates, FTE plan, ramps, totals) is the easiest way to keep these in sync; the tables here are its published view.
+
+## Sensitivity
+
+Effect on the **9-month expected total** for the **blended** team ($774k before contingency) when one input changes and everything else stays the same.
+
+| Input change | Effect on 9-month total | Relative impact |
+|---|--:|---|
+| Move the whole team to US rates (US-heavy scenario) | +$727k | ●●●●● |
+| Move the whole team to India rates (India-heavy scenario) | −$318k | ●●●● |
+| All salaries at the high end of their bands | +$125k | ●●● |
+| Timeline slips by 2 months at full team (steady-state burn) | +$160k – $220k | ●●● |
+| Add a US-based senior engineer for 9 months | +$165k – $190k | ●●● |
+| Lead engineer and PM hired in India instead of the US | −$255k | ●●●● |
+| GTM role deferred to Phase 4 (starts M7) | −$32k | ●● |
+| Bombora contract from month 4 ($2k–$5k per month) | +$12k – $30k | ●● |
+| SOC 2 work deferred beyond month 9 | −$40k | ●● |
+| Claude usage 3× the plan | +$29k | ● |
+| AWS cost 2× the plan | +$23k | ● |
+| FX moves ±5% (₹81–₹89 per $) | ∓$10k | ● |
+| Tooling at $400 per FTE per month instead of $250 | +$12k | ● |
+
+**Takeaways**
+
+1. **Team location and seniority dominate.** Apart from a schedule slip, no other single input moves the total as much as one extra US hire.
+2. **Schedule slips are expensive** because burn is mostly fixed people cost. Protect the critical path ([Timeline](/docs/roadmap/timeline#critical-path)).
+3. **Vendor and AI costs are small during the build** but become the main variable cost after GA. They should be modelled against revenue per workspace from then on.
+
+Calculation notes: lead + PM to India = 9 months × ($21.7k − $6.3k) + 9 × ($17.5k − $4.6k) ≈ $255k. Two-month slip = 2 × blended steady-state burn ($80k–$110k). Claude 3× = 2 × $14.5k. AWS 2× = $22.6k. FX ±5% applies to India-based people cost in the blended team ($202k).
+
+## Change log
+
+| Date | Change | Author |
+|---|---|---|
+| 2026-09-17 | Initial model: team plan, bands, ramps, scenarios | Product & engineering |

@@ -235,6 +235,17 @@ curl -s -X POST http://localhost:4000/api/v1/tasks \
   -d '{"title":"Send pricing deck","accountId":"acc_8f8db25","dueAt":"2026-09-24T09:00:00Z"}'
 ```
 
+Then make the module available to [mock data mode](/docs/engineering/frontend/mock-mode): import its routes in `frontend/src/mock-api/server.ts` next to the other modules, and regenerate the browser copy of the backend.
+
+```ts title="frontend/src/mock-api/server.ts"
+import "./core/modules/pipeline/routes"
+import "./core/modules/tasks/routes"
+```
+
+```bash
+cd frontend && npm run mock:sync && npm run mock:check
+```
+
 </Step>
 <Step>
 

@@ -1,4 +1,4 @@
 {
   "title": "SellEasy",
-  "pages": ["index", "product", "engineering"]
+  "pages": ["index", "product", "architecture", "mvp-scope", "roadmap", "team-and-cost", "engineering"]
 }

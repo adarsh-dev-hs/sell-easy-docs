@@ -19,7 +19,7 @@ Every stored record is a `Stored<T>`, which adds these fields to the domain type
   }}
 />
 
-- **Ids** come from `newId(prefix)` in `lib/ids.ts`: 6 random bytes in base64url, with `-` and `_` replaced by `x`.
+- **Ids** come from `newId(prefix)` in `lib/ids.ts`: the prefix, `_`, and 8 random alphanumeric characters (`randomToken(8)`, from the Web Crypto RNG), for example `acc_Xa9x2bQk`. The demo seed uses its own ids with a random 6-hex suffix.
 - **Timestamps** are ISO strings from `nowIso()`. Date filters compare the strings lexicographically, which works because the format is fixed.
 - **Optional fields** are removed from the file when set to `undefined`, because `JSON.stringify` drops them. Services use this to clear a field, for example `{ duplicateOf: undefined }`.
 - **References** are plain id strings. Nothing enforces foreign keys; services validate them where it matters and clean up in the cascades described below.
@@ -156,7 +156,7 @@ Stored in `users.json`. The public shape `User` is produced by `toPublicUser()`,
     role: { type: '"owner" | "admin" | "member" | "viewer"', description: 'Exactly one owner per org. It cannot be invited, assigned, changed or removed.', required: true },
     avatarColor: { type: 'string', description: 'Tailwind class, e.g. "bg-indigo-500".', required: true },
     title: { type: 'string', description: 'Job title.' },
-    status: { type: '"active" | "invited"', description: 'Only active users can log in or pass authenticateJwt.', required: true },
+    status: { type: '"active" | "invited"', description: 'Only active users can log in or pass authenticateBearer.', required: true },
     lastActiveAt: { type: 'string', description: 'Updated on login and invite acceptance.' },
     passwordHash: { type: 'string', description: 'PRIVATE. bcryptjs hash, cost 10. Absent for invited users.' },
     inviteToken: { type: 'string', description: 'PRIVATE. "inv_" + 24 random chars. Cleared when the invite is accepted.' },
@@ -190,7 +190,7 @@ Stored in `api_keys.json`. The public shape `ApiKey` (from `toPublicApiKey()`) o
     name: { type: 'string', description: 'Label (1–80 chars).', required: true },
     prefix: { type: 'string', description: 'First 12 chars of the secret, e.g. "se_live_Qp91", shown in the UI.', required: true },
     scopes: { type: 'string[]', description: 'Subset of API_SCOPES. Only "signals:write" is enforced by a route today.', required: true },
-    createdBy: { type: 'string', description: 'User id. Becomes req.auth.userId for API-key requests.', required: true },
+    createdBy: { type: 'string', description: 'User id. Becomes ctx.auth.userId for API-key requests.', required: true },
     revoked: { type: 'boolean', description: 'Revoked keys fail lookup (the lookup filters on revoked: false). Keys are never deleted.', required: true },
     lastUsedAt: { type: 'string', description: 'Updated on every successful API-key request.' },
     hash: { type: 'string', description: 'PRIVATE. sha256(secret) as hex. The plaintext secret is returned once, at creation.', required: true },

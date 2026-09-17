@@ -6,6 +6,8 @@ icon: Network
 
 SellEasy is a two-tier web application. A Next.js 16 frontend renders the UI and a single Express 5 + TypeScript API owns all data and business rules. The API is a **modular monolith**: each future "service" (Entity, Signal ingestion, Scoring, Orchestration, Outreach, CRM/Pipeline, and so on) is a folder under `backend/src/modules/`. Every module talks to storage through one tenant-scoped `Repository<T>` interface. Today that interface is backed by JSON files on disk.
 
+The web app can also run **without** the API: in mock data mode it executes a generated copy of the backend's route and service code in the browser (see [Two data modes](#two-data-modes)).
+
 This page covers the system as built today, the AWS architecture it is meant to grow into, and the decisions that connect the two.
 
 ## System context
@@ -51,12 +53,12 @@ flowchart TB
 
   subgraph "API process (Node ≥ 20)"
     mw["Middleware<br/>pino-http · helmet · cors · compression · json · rate-limit"]
-    routes["Module routers<br/>createModule().route()"]
+    routes["Module routers<br/>createModule().route() → executeRoute()"]
     services["Services<br/>modules/*/service.ts"]
     engine["Scoring engine<br/>modules/scoring/engine.ts"]
     agent["Orchestration agent<br/>modules/agent/service.ts"]
     repo["Repository interface<br/>db/repository.ts"]
-    json["JsonRepository<br/>in-memory cache + write queue"]
+    json["JsonRepository<br/>extends MemoryRepository<br/>(cache + write queue)"]
     bus["MemoryEventBus<br/>events/bus.ts"]
     prov["Provider mocks<br/>providers/index.ts"]
     mw --> routes --> services
@@ -75,11 +77,44 @@ flowchart TB
 
 | Container | Technology | Location | Responsibility |
 |---|---|---|---|
-| Web app | Next.js 16, React 19, shadcn/ui, TanStack Query 5, zustand | `frontend/` | Rendering, forms, client-side routing. Holds **no business data**. The only persisted browser state is the session (`selleasy-session`). |
+| Web app | Next.js 16, React 19, shadcn/ui, TanStack Query 5, zustand | `frontend/` | Rendering, forms, client-side routing. In `api` mode it holds **no business data**, and the only persisted browser state is the session (`selleasy-session`). In `mock` mode it also runs the API code and stores the data in `localStorage`. |
 | API | Express 5, TypeScript, zod 4, pino | `backend/src/` | Auth, validation, every business rule, persistence, OpenAPI. |
 | Database | JSON files | `backend/db/` (`DATA_DIR`) | One JSON array per collection, written atomically. |
 | API docs | swagger-ui-express | `GET /api/v1/docs`, `GET /api/v1/openapi.json` | Generated from route definitions. |
 | Product and engineering docs | Fumadocs (Next.js) | `docs/` | This site. |
+
+## Two data modes
+
+The web app picks its data source at build time from `NEXT_PUBLIC_DATA_SOURCE` (`frontend/src/lib/api/client.ts`):
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    hooks["TanStack Query hooks"] --> client["api client<br/>send()"]
+    client -->|"DATA_SOURCE = mock"| mock["mockRequest()<br/>src/mock-api/server.ts"]
+    mock --> rt1["executeRoute()<br/>core/lib/route-runtime.ts"]
+    rt1 --> svc1["services (core/modules)"]
+    svc1 --> mem1["JsonRepository override<br/>extends MemoryRepository"]
+    mem1 --> ls[("localStorage<br/>selleasy-mock-db:*")]
+  end
+  subgraph Server["API process"]
+    express["Express router<br/>lib/http.ts"] --> rt2["executeRoute()<br/>lib/route-runtime.ts"]
+    rt2 --> svc2["services (modules)"]
+    svc2 --> mem2["JsonRepository<br/>extends MemoryRepository"]
+    mem2 --> files[("backend/db/*.json")]
+  end
+  client -->|"DATA_SOURCE = api (default)<br/>fetch NEXT_PUBLIC_API_URL"| express
+```
+
+| | `api` (default) | `mock` |
+|---|---|---|
+| What runs the business logic | The Express API | The same `backend/src` code, copied to `frontend/src/mock-api/core` by `npm run mock:sync` |
+| Storage | JSON files in `DATA_DIR` | `localStorage`, one key per collection (`selleasy-mock-db:<collection>`) |
+| Auth | HS256 JWTs, bcrypt, SHA-256 API key hashes | Unsigned `mock.` tokens and a non-cryptographic hash. **Demo only.** |
+| Who sees the data | Everyone using that API | Only the current browser |
+| Deployment | API and web app | Web app only (for example on Vercel) |
+
+`executeRoute()` is the shared core of both modes: it authenticates, checks roles, validates with zod, calls the handler and builds the response envelope, with no dependency on Express. Details: [Mock data mode](/docs/engineering/frontend/mock-mode) and [Environments and data modes](/docs/architecture/environments-and-data-modes).
 
 ## Target AWS architecture
 
@@ -112,13 +147,13 @@ flowchart LR
 
 | Concern | Target (plan.md / .env.example) | Implemented today | Switch |
 |---|---|---|---|
-| Web hosting | CloudFront + S3, or Vercel | `next dev` / `next start` locally | n/a |
+| Web hosting | CloudFront + S3, or Vercel | `next dev` / `next start` locally. A frontend-only Vercel demo is possible with `NEXT_PUBLIC_DATA_SOURCE=mock`. | `NEXT_PUBLIC_DATA_SOURCE` |
 | API runtime | ECS Fargate behind an ALB | Single Node process (`node dist/server.js`) | n/a |
 | Primary database | RDS PostgreSQL | `JsonRepository` over `backend/db/*.json` | `DB_DRIVER=json` (a `postgres` value **throws at startup**) |
 | Pipeline DB, warehouse | `PIPELINE_DATABASE_URL`, Redshift/Snowflake | Not implemented; analytics are computed per request | env keys only |
 | Cache | ElastiCache Redis | None (the repository's in-memory cache only) | `CACHE_DRIVER` is validated but unused |
 | Search | OpenSearch | Case-insensitive substring scan in memory (`GET /search`) | `SEARCH_DRIVER` is validated but unused |
-| Event bus | EventBridge / SQS | `MemoryEventBus` (Node `EventEmitter`); **nothing subscribes** | `EVENT_BUS_DRIVER` (non-`memory` logs a warning and falls back) |
+| Event bus | EventBridge / SQS | `MemoryEventBus` (handler `Map` plus `queueMicrotask`); **nothing subscribes** | `EVENT_BUS_DRIVER` is validated; any value other than `memory` logs a warning and falls back to the in-memory bus |
 | Workflow | Step Functions (enrichment) | Synchronous `accountService.enrich` | `STEP_FUNCTIONS_ENRICHMENT_ARN` unused |
 | Agent processing | Async workers | Synchronous `agentService.processSignal` inside the ingest request | n/a |
 | Email | SES / Instantly / Mailpool | `mockEmail.send` logs at debug level | `EMAIL_PROVIDER` (non-`mock` warns, uses mock) |
@@ -163,7 +198,7 @@ sequenceDiagram
   participant Q as TanStack Query
   participant C as api client
   participant X as Express middleware
-  participant R as route() wrapper
+  participant R as executeRoute()
   participant S as Service
   participant P as JsonRepository
   participant F as db/*.json
@@ -172,20 +207,21 @@ sequenceDiagram
   Q->>C: api.page("/accounts", query)
   C->>X: GET /api/v1/accounts?tier=A,B (Authorization: Bearer …)
   X->>X: pino-http, helmet, cors, compression, json, rate limit
-  X->>R: module router match
-  R->>R: authenticateJwt → re-read user → assertRole
+  X->>R: module router match → executeRoute(def, { params, query, body, headers })
+  R->>R: authenticateRequest → authenticateBearer → re-read user → assertRole
   R->>R: zod parse body / query / params
   R->>S: handler(ctx) → accountService.list(orgId, …)
   S->>P: db.accounts.list(orgId, { where, sort, page })
   P->>F: first call only: readFile + JSON.parse
   P-->>S: Page (structuredClone of cached rows)
   S-->>R: paged(page)
-  R-->>C: 200 { data, meta: { total, page, pageSize } }
+  R-->>X: { status: 200, json }
+  X-->>C: 200 { data, meta: { total, page, pageSize } }
   C-->>Q: { data, meta }
   Q-->>B: render
 ```
 
-A write follows the same path. The repository call goes through the per-collection write queue (`mutate`), which rewrites the whole file (`<name>.json.<pid>.tmp`, then `rename`). On success the frontend's `useApiMutation` invalidates **every** cached query by default, and the affected screens refetch.
+A write follows the same path. The repository call goes through `MemoryRepository`'s per-collection write queue (`mutate`), and `JsonRepository.persistRows()` then rewrites the whole file (`<name>.json.<pid>.tmp`, then `rename`). In mock mode the Express steps are replaced by `mockRequest()`, and `persistRows()` writes to `localStorage` instead. On success the frontend's `useApiMutation` invalidates **every** cached query by default, and the affected screens refetch.
 
 Details: [Request lifecycle](/docs/engineering/backend/request-lifecycle), [Data layer](/docs/engineering/backend/data-layer), [Frontend data layer](/docs/engineering/frontend/data-layer).
 
@@ -234,8 +270,8 @@ A draft created with `requireApproval: true` leaves the run in `awaiting_approva
 ## Multi-tenancy
 
 - The **organization is the tenant root**. An `Organization` record's `orgId` equals its own `id`, so it is read with `db.organizations.get(orgId, orgId)`.
-- Every persisted record carries `orgId` (`Stored<T>` in `domain/types.ts`). Every `Repository` method except `findGlobal` and `truncate` takes `orgId` as its first argument, and `JsonRepository` filters on it (`scoped()`), including in `get`, `update` and `remove`.
-- `orgId` always comes from the authenticated principal (`req.auth.orgId`, exposed to handlers as `ctx.orgId`). It is never read from the request body or URL.
+- Every persisted record carries `orgId` (`Stored<T>` in `domain/types.ts`). Every `Repository` method except `findGlobal` and `truncate` takes `orgId` as its first argument, and `MemoryRepository` (the base of `JsonRepository`) filters on it (`scoped()`), including in `get`, `update` and `remove`.
+- `orgId` always comes from the authenticated principal (the `AuthContext` returned by `authenticateRequest`, exposed to handlers as `ctx.orgId`). It is never read from the request body or URL.
 - A record that belongs to another tenant looks exactly like a missing record: `get` returns `null`, and the route answers `404`. The test suite checks this (`registers a new isolated workspace`).
 - `findGlobal` is the only cross-tenant read. It is used for login by email, API key lookup by hash, invite acceptance by token, and email uniqueness checks. **Emails are unique across all workspaces.**
 - `IcpConfig` is one record per org whose `id` is the `orgId`.
@@ -246,14 +282,14 @@ A draft created with `requireApproval: true` leaves the run in `awaiting_approva
 <Accordion title="ADR-1 · JSON-file repository behind a storage-agnostic interface">
 **Context.** The product needed a real backend quickly, with no infrastructure to run locally.
 
-**Decision.** Services depend only on `Repository<T>` (`db/repository.ts`). It has a deliberately small query language (`eq`, `ne`, `in`, `nin`, comparisons, `exists`, `contains`, `$or`) that maps directly to SQL. The first driver is `JsonRepository`: one file per collection, an in-memory cache, and atomic writes. `DB_DRIVER` selects the driver in `db/index.ts`.
+**Decision.** Services depend only on `Repository<T>` (`db/repository.ts`). It has a deliberately small query language (`eq`, `ne`, `in`, `nin`, comparisons, `exists`, `contains`, `$or`) that maps directly to SQL. `MemoryRepository` implements the query language and the write queue with no Node APIs. The first driver, `JsonRepository`, extends it with one file per collection and atomic writes. `DB_DRIVER` selects the driver in `db/index.ts`.
 
-**Consequences.** Zero-setup local development, and files you can inspect by hand. The driver is single-process only and keeps full collections in memory. Every write rewrites the whole file. There are no transactions: multi-collection operations such as cascading deletes are not atomic. The Postgres driver is a stub that throws.
+**Consequences.** Zero-setup local development, and files you can inspect by hand. Because the query logic is portable, the frontend's mock mode reuses it with a `localStorage` driver. The driver is single-process only and keeps full collections in memory. Every write rewrites the whole file. There are no transactions: multi-collection operations such as cascading deletes are not atomic. The Postgres driver is a stub that throws.
 </Accordion>
 <Accordion title="ADR-2 · zod-driven routes and a generated OpenAPI document">
-**Decision.** Every endpoint is declared with `createModule(tag, basePath).route({ method, path, body, query, params, roles, handler })`. The wrapper validates with zod, authenticates, checks roles, wraps the response and records the route in `routeRegistry`. `buildOpenApi()` turns the registry into OpenAPI 3.1 with `z.toJSONSchema`.
+**Decision.** Every endpoint is declared with `createModule(tag, basePath).route({ method, path, body, query, params, roles, handler })`. `route()` records the definition in `routeRegistry` and binds it to Express. The transport-agnostic `executeRoute()` in `lib/route-runtime.ts` authenticates, checks roles, validates with zod, calls the handler and builds the response. Handlers get a `RouteContext` without `req` or `res`, and return `fileResponse()` for downloads. `buildOpenApi()` turns the registry into OpenAPI 3.1 with `z.toJSONSchema`.
 
-**Consequences.** Validation, docs and handler types can't drift apart. Response schemas are **not** described (the responses have empty `content`). The frontend keeps a hand-maintained copy of the types in `frontend/src/lib/types.ts`.
+**Consequences.** Validation, docs and handler types can't drift apart. Because handlers never touch Express, the same definitions run in the browser in mock mode. Response schemas are **not** described (the responses have empty `content`). The frontend keeps a hand-maintained copy of the types in `frontend/src/lib/types.ts`.
 </Accordion>
 <Accordion title="ADR-3 · Synchronous agent processing now, event bus later">
 **Decision.** `signalService.ingest` calls `agentService.processSignal` inline when autopilot is on. It still publishes `signal.ingested` on the `EventBus` abstraction so an async consumer can be added without touching callers.
@@ -271,9 +307,16 @@ A draft created with `requireApproval: true` leaves the run in `awaiting_approva
 **Consequences.** The whole product works offline and in tests. Real adapters are additive. The mocks are only partly deterministic: CRM ids and some LLM subjects use `Math.random`.
 </Accordion>
 <Accordion title="ADR-6 · Stateless JWT sessions that re-read the user">
-**Decision.** Tokens are HS256 JWTs with `sub`, `org` and `role` claims. `authenticateJwt` still loads the user on every request and uses the stored role and status.
+**Decision.** Tokens are HS256 JWTs with `sub`, `org` and `role` claims. `authenticateBearer` still loads the user on every request and uses the stored role and status.
 
 **Consequences.** Role changes and removals take effect immediately, at the cost of one cached lookup per request. Logout is client-side only: there is no token revocation list.
+</Accordion>
+<Accordion title="ADR-7 · Mock data mode by running the backend code in the browser">
+**Context.** Stakeholders need a clickable demo that can be deployed as a frontend only (for example on Vercel), without hosting the API.
+
+**Decision.** `NEXT_PUBLIC_DATA_SOURCE=mock` makes the API client call `mockRequest()` instead of `fetch`. `frontend/scripts/sync-mock-core.mjs` copies `backend/src` into `frontend/src/mock-api/core` and swaps the few Node- or Express-only files for browser overrides. No business logic is rewritten for the frontend.
+
+**Consequences.** The demo behaves exactly like the real API and stays correct as the backend changes, as long as the generated copy is re-synced (`npm run mock:check` catches drift). The shared backend code must stay free of Node-only imports. Mock auth and crypto are not secure, and data lives only in one browser.
 </Accordion>
 </Accordions>
 

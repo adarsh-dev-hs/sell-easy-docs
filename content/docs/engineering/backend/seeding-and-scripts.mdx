@@ -91,7 +91,7 @@ Running it again **replaces** the demo data. Record ids change on every run (see
 
 ```mermaid
 flowchart TD
-  A["generateSeed()"] --> B["suffix = randomBytes(3).hex"]
+  A["generateSeed()"] --> B["suffix = randomHex(3)"]
   B --> C["Map usr_1 → ownerId (the real owner plays Jordan Lee)"]
   C --> D["For usr_2..usr_6: email = local part @ org.domain"]
   D --> E{"user with that email exists?"}

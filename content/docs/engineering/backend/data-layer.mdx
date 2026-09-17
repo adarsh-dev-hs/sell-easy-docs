@@ -1,10 +1,21 @@
 ---
 title: Data layer
-description: The Repository interface and query language, JsonRepository internals, the collection registry, and how to implement the Postgres driver.
+description: The Repository interface and query language, MemoryRepository and its storage drivers, the collection registry, and how to implement the Postgres driver.
 icon: HardDrive
 ---
 
-Services never touch storage directly. They call `db.<collection>`, which returns a `Repository<T>` (`src/db/repository.ts`). The driver behind it is chosen by `DB_DRIVER` in `src/db/index.ts`. Today the only working driver is `JsonRepository` (`src/db/json/json-repository.ts`), which keeps one JSON array file per collection in `DATA_DIR`.
+Services never touch storage directly. They call `db.<collection>`, which returns a `Repository<T>` (`src/db/repository.ts`). The driver behind it is chosen by `DB_DRIVER` in `src/db/index.ts`.
+
+Today every working driver is built on **`MemoryRepository`** (`src/db/memory/memory-repository.ts`). It holds a collection in memory and implements the whole query language and write queue with no Node APIs. Storage drivers subclass it and only decide where rows are loaded from and saved to:
+
+| Driver | File | Storage | Used by |
+|---|---|---|---|
+| `MemoryRepository` | `src/db/memory/memory-repository.ts` | Nothing (in memory only) | Base class |
+| `JsonRepository` | `src/db/json/json-repository.ts` | One JSON array file per collection in `DATA_DIR` | The API (`DB_DRIVER=json`) |
+| `JsonRepository` (browser override) | `frontend/src/mock-api/overrides/db/json/json-repository.ts` | One `localStorage` key per collection (`selleasy-mock-db:<collection>`) | The frontend's [mock data mode](/docs/engineering/frontend/mock-mode) |
+| Postgres | `src/db/postgres/postgres-repository.ts` | — | Stub that throws |
+
+The browser driver keeps the `JsonRepository` name and constructor so `db/index.ts` works unchanged in both runtimes.
 
 ## The `Repository<T>` interface
 
@@ -67,7 +78,7 @@ export type Where<T> = { [K in keyof T]?: FieldCondition<T[K] extends (infer U)[
 
 For array fields (for example `technologies: string[]`), the condition's value type is the **element** type.
 
-### Operator semantics (JSON driver)
+### Operator semantics (`MemoryRepository`)
 
 | Condition | Scalar field | Array field |
 |---|---|---|
@@ -134,7 +145,7 @@ db.contacts.list(orgId, {
 
 ### Sorting
 
-`sortRecords` sorts in place with the keys in order:
+`sortRecords` (exported from `memory-repository.ts`) sorts in place with the keys in order:
 
 - Equal values fall through to the next key.
 - `null`/`undefined` values sort **last in both directions**.
@@ -142,51 +153,95 @@ db.contacts.list(orgId, {
 - `dir: "desc"` negates the comparison.
 - With no sort, records come back in storage order: insertion order, since the `Map` keeps it.
 
-## `JsonRepository` internals
+## `MemoryRepository` and its drivers
+
+```ts title="src/db/memory/memory-repository.ts (outline)"
+export class MemoryRepository<T extends { id: ID }> implements Repository<T> {
+  constructor(public readonly name: string, protected readonly idPrefix: string) {}
+
+  /** Initial rows for the collection. Drivers override this to read from storage. */
+  protected async loadRows(): Promise<Stored<T>[]> { return [] }
+
+  /** Called after every mutation with the full collection. Drivers override this to save. */
+  protected async persistRows(rows: Stored<T>[]): Promise<void> {}
+
+  // list, find, findOne, get, count, create, createMany, update, updateMany,
+  // remove, removeMany, findGlobal, truncate — all implemented here
+}
+
+export function matches<T>(record: T, where?: Where<T>): boolean
+export function sortRecords<T>(items: T[], sort?: Sort<T> | Sort<T>[]): T[]
+```
+
+```ts title="src/db/json/json-repository.ts (outline)"
+export class JsonRepository<T extends { id: ID }> extends MemoryRepository<T> {
+  constructor(name: string, private readonly dataDir: string, idPrefix: string) { super(name, idPrefix) }
+
+  protected async loadRows() { /* readFile(<dataDir>/<name>.json) → JSON array; ENOENT → [] */ }
+
+  protected async persistRows(rows) {
+    await mkdir(this.dataDir, { recursive: true })
+    const tmp = `${this.file}.${process.pid}.tmp`
+    await writeFile(tmp, JSON.stringify(rows, null, 2))
+    await rename(tmp, this.file)
+  }
+}
+```
 
 ```mermaid
 sequenceDiagram
   participant S as Service
-  participant R as JsonRepository
+  participant R as MemoryRepository
   participant Q as write queue (promise chain)
   participant M as cache Map
+  participant D as driver (JsonRepository)
   participant F as file system
 
   S->>R: list / find / get (read)
-  R->>M: load() — first call reads <name>.json once
+  R->>M: load() — first call runs loadRows() once
   M-->>R: rows
   R-->>S: structuredClone(result)
 
   S->>R: update(orgId, id, patch) (write)
   R->>Q: mutate(fn) appended to queue
   Q->>M: load(), fn(map) mutates Map
-  Q->>F: writeFile(<name>.json.<pid>.tmp)
-  Q->>F: rename(tmp → <name>.json)
+  Q->>D: persistRows([...map.values()])
+  D->>F: writeFile(<name>.json.<pid>.tmp), rename(tmp → <name>.json)
   Q-->>S: structuredClone(record)
 ```
 
 | Mechanism | Implementation | Why |
 |---|---|---|
-| **Lazy load and cache** | `load()` reads `<dataDir>/<name>.json` once into `Map<id, record>`. A concurrent first read shares the same `loading` promise. A missing file (`ENOENT`) gives an empty collection, and an empty file counts as `[]`. | Reads never hit the disk after warm-up. |
-| **Validation on load** | Content that isn't a JSON array throws `must contain a JSON array`. | Catches manual editing mistakes. |
-| **Per-collection write queue** | `mutate(fn)` chains onto `this.queue`. Each step loads, runs `fn`, and persists. A failed step doesn't break the chain (`run.catch(() => undefined)`), but the error is still returned to the caller. | Concurrent requests can never interleave file writes. |
-| **Atomic persistence** | `writeFile` to `<file>.<pid>.tmp` (pretty-printed, 2-space indent), then `rename` over the target. `mkdir -p` the data dir first. | A crash never leaves a half-written file. |
+| **Lazy load and cache** | `load()` calls `loadRows()` once and builds a `Map<id, record>`. A concurrent first read shares the same `loading` promise. For the JSON driver, a missing file (`ENOENT`) gives an empty collection, and an empty file counts as `[]`. | Reads never hit storage after warm-up. |
+| **Validation on load** | The JSON driver throws `must contain a JSON array` for other content. | Catches manual editing mistakes. |
+| **Per-collection write queue** | `mutate(fn)` chains onto `this.queue`. Each step loads, runs `fn`, and calls `persistRows()` with the whole collection. A failed step doesn't break the chain (`run.catch(() => undefined)`), but the error is still returned to the caller. | Concurrent requests can never interleave writes. |
+| **Atomic persistence (JSON driver)** | `writeFile` to `<file>.<pid>.tmp` (pretty-printed, 2-space indent), then `rename` over the target. `mkdir -p` the data dir first. | A crash never leaves a half-written file. |
 | **Copy on read** | Every read and write result goes through `structuredClone`. | Callers can't mutate the cache by accident. |
 | **Tenant scoping** | `scoped(map, orgId)` filters on `r.orgId === orgId`. `get`, `update` and `remove` compare `orgId` too. | Isolation between tenants. |
 | **Global lookup** | `findGlobal` scans all values without the org filter. | Login by email, API key by hash, invite token. |
 | **Protected fields** | `update`/`updateMany` always restore `id`, `orgId` and `createdAt`, and set `updatedAt: nowIso()`. | A patch can't move a record between tenants. |
 
+### The browser driver (mock mode)
+
+`frontend/src/mock-api/overrides/db/json/json-repository.ts` replaces the file driver when the backend code is copied into the frontend:
+
+- **`loadRows()`** reads `localStorage["selleasy-mock-db:<collection>"]` and parses it. Missing, unparsable or non-array values give an empty collection (no error).
+- **`persistRows()`** is **debounced by 250 ms**: it keeps only the latest rows and writes them with `localStorage.setItem` once the burst of writes is over. Seeding and bulk re-scoring would otherwise serialize the whole collection hundreds of times.
+- A failed `setItem` (usually the quota, about 5 MB per origin) is logged as `[mock-api] could not persist <collection> (storage full?)`. The in-memory copy keeps the change until the page is reloaded.
+- It exports `MOCK_DB_PREFIX = "selleasy-mock-db:"`, which `resetMockDatabase()` in `mock-api/server.ts` uses to delete every collection.
+- The `dataDir` constructor argument is ignored.
+
 <Callout type="warn" title="Known limitations">
 - **Writes are not cloned on the way in.** `build()` and `update()` spread input objects shallowly, so nested arrays and objects in the input are shared with the cache until the next load. Don't mutate an object after passing it to the repository.
-- **A corrupt file breaks the collection.** If the file fails to parse, the rejected `loading` promise is cached and every call fails until the process restarts.
+- **A corrupt file breaks the collection** (JSON driver). If the file fails to parse, the rejected `loading` promise is cached and every call fails until the process restarts.
 - **No transactions.** A service call that touches several collections (cascades, merges) isn't atomic. If `fn` throws partway through an `updateMany`, earlier in-memory changes stay in the cache but are not persisted until the next successful write.
-- **One process only.** The cache is never refreshed from disk, and the temp file name includes the pid. Two API processes on the same `DATA_DIR` will overwrite each other's changes.
-- **Every write rewrites the whole file.** Prefer `createMany` and `updateMany` to loops.
+- **One process only.** The cache is never refreshed from storage, and the temp file name includes the pid. Two API processes on the same `DATA_DIR` will overwrite each other's changes. In the browser, two tabs of the mock app each hold their own cache, and the last tab to write a collection wins.
+- **Every write rewrites the whole collection.** Prefer `createMany` and `updateMany` to loops.
 </Callout>
 
 ## Collection registry
 
-`src/db/index.ts` creates every repository through `collection(name, idPrefix)`. `name` is both the file name and the collection or table name.
+`src/db/index.ts` creates every repository through `collection(name, idPrefix)`. `name` is the file name, the `localStorage` key suffix in mock mode, and the collection or table name.
 
 ```ts title="src/db/index.ts"
 function collection<T extends { id: string }>(name: string, idPrefix: string): Repository<T> {
@@ -304,7 +359,7 @@ Run `npm test` with `DB_DRIVER=postgres` against a disposable database. The API 
 
 ## Editing the JSON files by hand
 
-The files are plain, pretty-printed JSON arrays, so they are easy to inspect and patch. Before you edit:
+The files are plain, pretty-printed JSON arrays, so they are easy to inspect and patch. (In mock mode the same arrays live in `localStorage` under `selleasy-mock-db:<collection>`, minified.) Before you edit:
 
 <Callout type="error" title="Stop the API first">
 The server reads each file once and serves it from memory, so edits to a running server are ignored. The next write to that collection then **overwrites your changes** with the cached copy. Stop the API, edit, then start it again.

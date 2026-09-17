@@ -1,0 +1,226 @@
+---
+title: Acceptance criteria
+description: Testable acceptance criteria for each MVP capability, written as Given / When / Then scenarios and checklists.
+icon: ClipboardCheck
+---
+
+Each capability in [In scope](/docs/mvp-scope/in-scope) has acceptance criteria below. A capability is accepted when every scenario passes in **staging** with real vendor sandbox accounts, and a sample is re-checked in **production**. IDs (for example `AC-M5-2`) are used in test plans and release notes.
+
+<Callout type="info" title="How to test">
+Automate API-level scenarios with the existing vitest + supertest suite (running against Postgres in CI). Cover the user flows with a Playwright smoke suite. Vendor scenarios use recorded fixtures in CI and live sandbox accounts in staging.
+</Callout>
+
+## M1 · Production platform
+
+- [ ] **AC-M1-1** `DB_DRIVER=postgres` passes the full API test suite in CI.
+- [ ] **AC-M1-2** The migration script moves a seeded JSON workspace into Postgres with identical record counts, ids and timestamps.
+- [ ] **AC-M1-3** Multi-collection operations (merge, cascading deletes, import) are transactional: a forced failure mid-way leaves no partial changes.
+- [ ] **AC-M1-4** Production runs at least two API tasks; a rolling deploy completes with zero failed requests in a synthetic check.
+- [ ] **AC-M1-5** RDS point-in-time recovery is enabled, and a restore into staging has been rehearsed and timed (target ≤ 1 hour).
+- [ ] **AC-M1-6** Unhandled errors appear in the error tracker within 1 minute; alerts fire for 5xx rate above 2% over 5 minutes.
+- [ ] **AC-M1-7** The production web build uses `NEXT_PUBLIC_DATA_SOURCE=api`; no "Demo data" badge is visible.
+- [ ] **AC-M1-8** p95 API latency is ≤ 500 ms for list endpoints at 10× pilot data volume (load test).
+
+## M2 · Workspace, team and access
+
+```text
+AC-M2-1
+Given an admin invites teammate@customer.com as a member
+When the invite is sent
+Then an email with a single-use link arrives within 2 minutes
+And the invite token is not returned in the API response in production
+And the link expires after 7 days
+
+AC-M2-2
+Given a viewer is logged in
+When they try any write action through the UI or API
+Then the API responds 403 and nothing changes
+
+AC-M2-3
+Given 20 failed logins for one account within 15 minutes
+When a 21st attempt is made
+Then it is rate-limited, even if requests hit different API tasks
+```
+
+- [ ] **AC-M2-4** Access tokens expire within 24 hours; a refresh flow keeps active users signed in; logout revokes the refresh token.
+- [ ] **AC-M2-5** Records from workspace A are never returned to a user of workspace B (automated tenant-isolation test on every list and get route).
+
+## M3 · Accounts, contacts and import
+
+```text
+AC-M3-1
+Given a CSV of 5,000 accounts, 200 of which share a domain with existing accounts
+When RevOps runs a dry run with mode "skip"
+Then the preview shows 4,800 to create, 200 to skip, and row-level errors
+And nothing is written
+
+AC-M3-2
+Given the same file
+When RevOps imports it with mode "update"
+Then 200 accounts are updated with a version entry and re-scored
+And no duplicate accounts are created
+```
+
+- [ ] **AC-M3-3** A manually created account with an existing domain is flagged as a duplicate; merge moves all contacts, signals, deals, activities, drafts and runs.
+- [ ] **AC-M3-4** Import of 5,000 rows completes in ≤ 60 seconds.
+
+## M4 · Enrichment
+
+```text
+AC-M4-1
+Given the workspace has connected the MVP enrichment vendor with a valid key
+When a user enriches an account with only a domain
+Then industry, employee count and location are filled where the vendor has data
+And the account shows the vendor as an enrichment source with a timestamp
+And the account is re-scored
+
+AC-M4-2
+Given an invalid vendor key
+When an admin connects the vendor
+Then the connection test calls the vendor and shows the vendor's error
+And no key is stored
+```
+
+- [ ] **AC-M4-3** With "Overwrite existing fields" off, user-entered values are never replaced.
+- [ ] **AC-M4-4** Email verification sets each contact to `verified`, `invalid` or `unverified` based on the vendor response.
+- [ ] **AC-M4-5** Vendor rate limits and timeouts are retried with backoff and never fail the user's request with a 500.
+- [ ] **AC-M4-6** Usage (credits) is counted per workspace and shown on the integration card.
+- [ ] **AC-M4-7** Match rate on the design partners' target lists is ≥ 70% for company firmographics (measured, not assumed).
+
+## M5 · Real signal ingestion
+
+```text
+AC-M5-1
+Given RB2B is connected with a webhook secret
+When RB2B posts an identified visit for a domain that matches an account
+Then a website_visit signal is stored within 60 seconds
+And the signal's source is RB2B
+
+AC-M5-2
+Given a webhook request with an invalid signature
+When it reaches SellEasy
+Then it is rejected with 401 and nothing is stored
+
+AC-M5-3
+Given a visit for a domain with no matching account
+When it is ingested
+Then it is handled according to the workspace rule (create account or ignore)
+And the outcome is visible in the integration sync log
+```
+
+- [ ] **AC-M5-4** Duplicate deliveries of the same vendor event create one signal (idempotency).
+- [ ] **AC-M5-5** Signals below the configured minimum strength are dropped and counted.
+- [ ] **AC-M5-6** `POST /signals/simulate` returns 403 in production and the Simulate button is hidden.
+
+## M6 · ICP and scoring
+
+- [ ] **AC-M6-1** Saving an ICP re-scores all accounts and the preview's tier counts match the result.
+- [ ] **AC-M6-2** A nightly job re-scores every workspace; an account with no new signals for 14 days shows roughly half its previous intent contribution.
+- [ ] **AC-M6-3** The account score breakdown lists every matched fit criterion and every contributing signal with its decayed points.
+
+## M7 · Orchestration agent with Claude
+
+```text
+AC-M7-1
+Given autopilot is on and a playbook matches Tier A/B accounts on website_visit
+When a matching signal arrives
+Then within 2 minutes the run log shows re-score, route, draft and notify steps
+And a draft addressed to the most senior contact with a valid email is waiting for approval
+
+AC-M7-2
+Given a draft was generated
+When the rep reads it
+Then the email names the company, refers to the signal in plain language
+And contains no placeholder text, invented facts about the prospect, or unsupported claims
+
+AC-M7-3
+Given the workspace's monthly token budget is exhausted
+When the agent needs a draft
+Then the run step is marked failed with a clear reason
+And the admin is notified
+```
+
+- [ ] **AC-M7-4** The webhook returns in ≤ 1 second regardless of LLM latency (agent runs on the queue).
+- [ ] **AC-M7-5** A failed LLM call is retried; after final failure the run is `failed`, and the signal can be reprocessed without duplicating completed actions.
+- [ ] **AC-M7-6** On the offline evaluation set, ≥ 80% of drafts are rated "send as is" or "minor edit" by two reviewers.
+- [ ] **AC-M7-7** Every LLM call records model, input tokens, output tokens and workspace for cost reporting.
+- [ ] **AC-M7-8** p95 time from signal to draft ready is ≤ 2 minutes.
+
+## M8 · Approval queue
+
+- [ ] **AC-M8-1** Approve, edit-and-approve, reject and regenerate each work from the queue and from the run detail.
+- [ ] **AC-M8-2** An approved draft is sent exactly once, even if the button is clicked twice or two users approve at once.
+- [ ] **AC-M8-3** "Approved with edits" is recorded and reported.
+- [ ] **AC-M8-4** A viewer cannot approve; a member can.
+
+## M9 · Sending and sequences
+
+```text
+AC-M9-1
+Given a sequence with send days Mon–Fri, 9:00–17:00 in America/New_York
+And a contact enrolled on Friday at 16:59 with a 2-day wait before step 2
+When the scheduler runs
+Then step 2 is sent on Tuesday between 9:00 and 17:00 New York time
+
+AC-M9-2
+Given a mailbox with a daily limit of 50 that has sent 50 today
+When more steps are due
+Then they are deferred to the next sending window, not dropped
+
+AC-M9-3
+Given a recipient clicks unsubscribe
+When any later step is due
+Then nothing is sent, the contact is unsubscribed
+And future enrollments skip the contact
+```
+
+- [ ] **AC-M9-4** Sent emails pass SPF, DKIM and DMARC checks (verified with a seed-inbox test).
+- [ ] **AC-M9-5** Hard bounces mark the contact `bounced` and stop the enrollment within 5 minutes.
+- [ ] **AC-M9-6** Sequence stats (sent, bounced, replied) reflect real events, not seeded numbers.
+- [ ] **AC-M9-7** The last step marks the enrollment `completed`.
+
+## M10 · Reply capture and inbox
+
+- [ ] **AC-M10-1** A reply to a sequence email appears in the inbox within 5 minutes, linked to the right contact and sequence.
+- [ ] **AC-M10-2** The enrollment stops when `stop on reply` is on; the contact becomes `replied`.
+- [ ] **AC-M10-3** Sentiment is set automatically; on a labelled sample of 100 replies, accuracy is ≥ 85%.
+- [ ] **AC-M10-4** Out-of-office replies are labelled and do not stop the sequence (configurable).
+- [ ] **AC-M10-5** A reply sent from the inbox is delivered in the same email thread.
+- [ ] **AC-M10-6** "Book meeting" creates or advances a deal and increments the sequence's meetings count.
+
+## M11 · Pipeline with HubSpot
+
+```text
+AC-M11-1
+Given HubSpot is connected via OAuth
+When the agent creates a deal
+Then within 5 minutes a HubSpot deal exists, associated with the right company and contact
+And the SellEasy deal shows the HubSpot id and last sync time
+
+AC-M11-2
+Given a deal is moved to Closed won in HubSpot
+When the HubSpot webhook arrives
+Then the SellEasy deal moves to Closed won and the account becomes Customer
+
+AC-M11-3
+Given both systems changed the same deal since the last sync
+When sync runs with the default policy
+Then the most recent change wins and the conflict is logged
+```
+
+- [ ] **AC-M11-4** Score and tier are written to HubSpot company properties when write-back is on.
+- [ ] **AC-M11-5** Revoking the app in HubSpot sets the integration to `error` and shows a Reconnect prompt.
+
+## M12 · Analytics and instrumentation
+
+- [ ] **AC-M12-1** Every event listed in [Success metrics → instrumentation](/docs/mvp-scope/success-metrics#instrumentation) is emitted with workspace id, user id and timestamp.
+- [ ] **AC-M12-2** The internal MVP dashboard shows each success metric per design partner, updated at least daily.
+- [ ] **AC-M12-3** Agent-influenced pipeline matches a manual calculation on a sample workspace.
+- [ ] **AC-M12-4** Dashboard and analytics pages load in ≤ 2 seconds (p95) at pilot data volume.
+
+## Cross-cutting
+
+- [ ] **AC-X-1** No Sev-1 or Sev-2 bugs are open at launch.
+- [ ] **AC-X-2** All critical flows pass on the latest Chrome, Edge and Safari.
+- [ ] **AC-X-3** Pages meet basic accessibility checks (keyboard navigation, labels, contrast) on the approval queue, inbox and accounts.
+- [ ] **AC-X-4** `npm run mock:check` passes, so the stakeholder demo matches the release.

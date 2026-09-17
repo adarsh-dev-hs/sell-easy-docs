@@ -1,0 +1,174 @@
+---
+title: In scope
+description: The MVP's capabilities prioritised with MoSCoW, each with user stories, rationale, current build status and whether a real integration is needed before launch.
+icon: ListChecks
+---
+
+Priorities use **MoSCoW**:
+
+- **Must**: the MVP does not launch without it.
+- **Should**: important, planned for the MVP, but launch can proceed with a workaround.
+- **Could**: included only if time allows.
+- **Won't (this time)**: see [Out of scope](/docs/mvp-scope/out-of-scope).
+
+**Build status** refers to today's code: ✅ built, 🟡 built on a mock, ⛔ not built. **Real integration** marks items that must talk to a real external system before launch.
+
+## Must have
+
+### M1 · Production platform
+
+| | |
+|---|---|
+| **User story** | As a design partner, I want my data stored safely and the app always available, so that I can rely on it for daily work. |
+| **Scope** | PostgreSQL driver and migrations; JSON → Postgres migration script; API on AWS (ECS Fargate + RDS); staging and production; CI/CD; backups with point-in-time recovery; error tracking and alerting; `NEXT_PUBLIC_DATA_SOURCE=api` in production. |
+| **Build status** | ⛔ (driver is a stub; no IaC or CI) |
+| **Real integration** | AWS |
+| **Rationale** | The JSON store is single-process and has no transactions. See [ADR-04](/docs/architecture/decisions#adr-04--json-file-store-behind-a-repository-interface). |
+| **Tech debt** | #1, #7, #24, #25, #26 in [Tech debt](/docs/engineering/tech-debt) |
+
+### M2 · Workspace, team and access
+
+| | |
+|---|---|
+| **User stories** | As an owner, I can create a workspace and invite my team by email. As an admin, I can set roles. As a viewer, I can read but not change anything. |
+| **Scope** | Existing sign-up, login, roles, seats, API keys. **Add:** invite emails with expiry, password rules, shorter sessions with refresh, login rate limiting in a shared store. |
+| **Build status** | ✅ core · ⛔ invite emails and session hardening |
+| **Real integration** | SES (invite emails) |
+| **Tech debt** | #4, #11 |
+
+### M3 · Accounts, contacts and import
+
+| | |
+|---|---|
+| **User stories** | As RevOps, I can import our target account list and contacts from CSV without creating duplicates. As an SDR, I can see a clean account record with contacts, signals, deals and history. |
+| **Scope** | Existing CRUD, import (dry run, skip / update), dedup and merge, versions, bulk actions. |
+| **Build status** | ✅ |
+| **Real integration** | — |
+| **Rationale** | Customers start by loading their TAM; data quality underpins scoring. |
+
+### M4 · Enrichment with one real vendor
+
+| | |
+|---|---|
+| **User story** | As RevOps, I can enrich accounts with firmographics and find verified emails for key contacts, so that scoring and outreach work without manual research. |
+| **Scope** | One real enrichment adapter (**Clearbit** or **Apollo**, chosen by design-partner access) behind the existing waterfall; email verification for contacts; per-org credentials; real connection test; usage counter. |
+| **Build status** | 🟡 |
+| **Real integration** | **Yes — at least one enrichment vendor** |
+| **Tech debt** | #2 |
+
+### M5 · Real signal ingestion
+
+| | |
+|---|---|
+| **User story** | As RevOps, I can connect our website visitor-ID tool so that every identified visit from a target account appears as a signal within a minute. |
+| **Scope** | Native, HMAC-verified **RB2B** webhook mapped to the `website_visit` signal type; the existing generic webhook with API keys (for Zapier and warehouses); minimum-strength filter; `ENABLE_SIMULATION=false` in production. |
+| **Build status** | ✅ generic webhook · ⛔ vendor connector |
+| **Real integration** | **Yes — at least one intent source webhook** |
+| **Tech debt** | #5, #10 |
+
+### M6 · ICP and explainable scoring
+
+| | |
+|---|---|
+| **User story** | As RevOps, I can define our ICP, preview how tiers change, and save it; as an SDR, I can see why an account is Tier A. |
+| **Scope** | Existing ICP editor, preview, breakdown and history. **Add:** scheduled nightly decay re-scoring. |
+| **Build status** | ✅ · ⛔ scheduled decay |
+| **Real integration** | — |
+| **Tech debt** | #8 |
+
+### M7 · Orchestration agent with Claude drafting
+
+| | |
+|---|---|
+| **User stories** | As RevOps, I can write a playbook that routes hot accounts, drafts an email and notifies the owner. As an SDR, I get a relevant first draft that references the actual signal. |
+| **Scope** | Existing playbooks, run log and actions. **Add:** Anthropic adapter for `draftOutreach` and `suggestReply` (`claude-opus-5` for drafts, `claude-haiku-4-5` for fast tasks); prompt templates with account, contact and signal context; token budget enforcement; LLM usage logging; an offline evaluation set of ~50 scenarios. Agent processing moved onto a queue (EventBridge + SQS). |
+| **Build status** | ✅ agent · 🟡 LLM · ⛔ queue |
+| **Real integration** | **Yes — Claude drafting** |
+| **Tech debt** | #2, #6, #19 |
+
+### M8 · Approval queue
+
+| | |
+|---|---|
+| **User story** | As an SDR, I can review, edit, regenerate, approve or reject drafts quickly, so that nothing reaches a prospect without my say-so. |
+| **Scope** | Existing approvals UI. **Add:** keyboard-friendly review, "approved with edits" tracking for the success metrics. |
+| **Build status** | ✅ |
+| **Real integration** | — |
+
+### M9 · Sending and sequences with one provider
+
+| | |
+|---|---|
+| **User story** | As an SDR, when I approve a draft it is sent from my mailbox and the contact continues through the sequence automatically, within sending hours and daily limits. |
+| **Scope** | **SES** email adapter; verified sending domains (SPF / DKIM / DMARC); step scheduler honouring send days, hours, time zone and mailbox daily limits; step advancement; `stop on reply`; unsubscribe link and suppression; bounce and complaint handling; real sent / bounced stats. |
+| **Build status** | ✅ sequences · 🟡 sending · ⛔ scheduler |
+| **Real integration** | **Yes — one email sending provider** |
+| **Tech debt** | #3, #13 |
+
+### M10 · Reply capture and inbox
+
+| | |
+|---|---|
+| **User story** | As an SDR, replies land in the SellEasy inbox with a sentiment label, the sequence stops, and I can reply or book a meeting in one click. |
+| **Scope** | SES inbound (S3 + SNS) matched to contact and sequence; sentiment by the fast Claude model; `replied` / `bounced` / `unsubscribed` status updates; reply sending through SES. |
+| **Build status** | ✅ inbox UI · ⛔ inbound capture |
+| **Real integration** | SES inbound |
+| **Tech debt** | #9 |
+
+### M11 · Pipeline with HubSpot sync
+
+| | |
+|---|---|
+| **User story** | As an AE, deals created by the agent or from booked meetings appear in HubSpot, and stage changes in HubSpot come back to SellEasy. |
+| **Scope** | HubSpot OAuth app; upsert company, contact and deal; deal stage mapping; inbound deal webhooks; conflict policy (default: most recent wins); score and tier write-back to a HubSpot company property. |
+| **Build status** | ✅ pipeline · 🟡 CRM push |
+| **Real integration** | **Yes — one CRM (HubSpot)** |
+
+### M12 · Dashboard, analytics and MVP instrumentation
+
+| | |
+|---|---|
+| **User story** | As a Head of Sales, I can see signals, agent activity, meetings and pipeline created, and how much of it the agent influenced. |
+| **Scope** | Existing dashboard and analytics. **Add:** product analytics events for the [success metrics](/docs/mvp-scope/success-metrics); agent-influenced pipeline metric (SQL join of runs and deals). |
+| **Build status** | ✅ · ⛔ instrumentation |
+| **Real integration** | Product analytics tool (for example PostHog) |
+
+## Should have
+
+| # | Capability | User story | Status | Notes |
+|---|---|---|---|---|
+| S1 | Trigify webhook | As RevOps, I get job-change and social-engagement signals. | ⛔ | Second intent source; same connector pattern as RB2B |
+| S2 | Second enrichment vendor in the waterfall | As RevOps, I get higher match rates by falling through to a second vendor. | 🟡 | FullEnrich or Prospeo for emails |
+| S3 | Per-user notification routing (email + Slack) | As an owner of an account, I'm told when it heats up. | ⛔ | Tech debt #15 |
+| S4 | Mailbox health from real bounce data | As RevOps, unhealthy mailboxes pause automatically. | ⛔ | Tech debt #14 |
+| S5 | Playbook priority ordering | As RevOps, I control which playbook wins. | ⛔ | Tech debt #20 |
+| S6 | Redis cache for dashboards | As a leader, dashboards load in under 2 seconds. | ⛔ | Only if latency targets are missed |
+
+## Could have
+
+| # | Capability | Notes |
+|---|---|---|
+| C1 | Bombora topic-surge ingestion | Depends on a partner agreement; long lead time |
+| C2 | LLM account research snippet on the account page | Early version of the Phase 3 research agent |
+| C3 | Postgres trigram search | Stepping stone before OpenSearch |
+| C4 | Soft delete and undo for deletes and imports | Reduces support load |
+| C5 | Generated frontend types from OpenAPI | Developer productivity (tech debt #23) |
+
+## Integrations required before launch
+
+| Integration | Vendor (MVP choice) | Capability | Fallback if blocked |
+|---|---|---|---|
+| Enrichment | Clearbit **or** Apollo | M4 | Import enriched CSVs; manual research |
+| Intent webhook | RB2B | M5 | Generic webhook fed by Zapier from any tool |
+| Email sending | AWS SES | M9, M10, M2 | Instantly API (pulled forward from Phase 3) |
+| CRM | HubSpot | M11 | CSV export of deals (already built) |
+| LLM | Anthropic Claude | M7, M10 | None acceptable; this is core to the value proposition |
+| Hosting | AWS | M1 | — |
+
+See [Integrations landscape](/docs/architecture/integrations-landscape) for auth methods and priorities.
+
+## Related
+
+- [Capability map](/docs/architecture/capability-map)
+- [Acceptance criteria](/docs/mvp-scope/acceptance-criteria)
+- [Roadmap → Phase 1](/docs/roadmap/phase-1-foundation) and [Phase 2](/docs/roadmap/phase-2-real-integrations)

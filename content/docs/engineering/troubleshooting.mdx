@@ -4,12 +4,13 @@ description: Fixes for the problems people most often hit when running and devel
 icon: LifeBuoy
 ---
 
-Find your symptom below. Most problems come from four places:
+Find your symptom below. Most problems come from five places:
 
 - ports and CORS
 - a stale session token
 - environment validation
 - the JSON store's in-memory cache
+- mock data mode (a stale generated core, or browser storage)
 
 If none of these entries help, check the API's terminal output (pino logs) and the browser's network tab. Every API error has a `code` you can look up in [Errors](/docs/engineering/api/errors).
 
@@ -44,6 +45,7 @@ This is a client-side `network_error`: `fetch` itself failed. Check each of thes
 |---|---|
 | Is the API running? | `curl -s http://localhost:4000/health` should return `{"status":"ok",…}` |
 | Is the URL right? | `frontend/.env.local` must have `NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1`. The login page shows which host it's using. |
+| Did you mean to use mock mode? | Without a backend, set `NEXT_PUBLIC_DATA_SOURCE=mock` (or run `npm run dev:mock`). See [Mock data mode](#mock-data-mode). |
 | Did you change the URL? | `NEXT_PUBLIC_*` values are inlined when Next starts or builds. Restart `next dev`. |
 | Did the API crash on startup? | Look for "Invalid environment configuration" or `EADDRINUSE` in the `api` output. |
 | Is it really a CORS error? | Browsers report blocked CORS requests as network failures. See the entry above. |
@@ -188,6 +190,88 @@ The request still returns `202`. Check `results[].ok` for each item.
 </Accordion>
 </Accordions>
 
+## Mock data mode
+
+These entries apply when the web app runs with `NEXT_PUBLIC_DATA_SOURCE=mock`. See [Mock data mode](/docs/engineering/frontend/mock-mode).
+
+<Accordions>
+<Accordion title='npm run mock:check fails with "src/mock-api/core is out of date with backend/src"'>
+
+**Cause:** someone changed `backend/src` without regenerating the frontend's copy. The script lists each `changed:` or `removed:` file.
+
+**Fix:**
+
+```bash
+cd frontend
+npm run mock:sync
+git add src/mock-api/core && git commit -m "chore(mock): sync mock core"
+```
+
+If the script says `Backend source not found at …`, it can't see the backend. Run it from the monorepo layout (`frontend/` next to `backend/`), or set `BACKEND_SRC` to the backend's `src` folder (relative to `frontend/`).
+
+</Accordion>
+<Accordion title='mock:sync fails with "… imports server-only module …"'>
+
+A backend file that is copied to the browser now imports `node:*`, `express`, `jsonwebtoken`, `pino`, `dotenv`, `helmet`, `cors` or `compression`. Either move that code behind one of the overridden files, add a browser replacement at the same path under `frontend/src/mock-api/overrides/`, or add the file to `SKIP` in `scripts/sync-mock-core.mjs` if the browser never imports it. See [Contributing](/docs/engineering/contributing#keeping-mock-mode-in-sync).
+
+</Accordion>
+<Accordion title="A screen works against the API but fails in mock mode">
+
+- **Stale core.** Run `npm run mock:check`. The browser may be running an older copy of the backend.
+- **Node-only code.** Look in the browser console for `[mock-api]` errors or a `ReferenceError` such as `Buffer is not defined`. Shared backend code must use web-standard APIs only.
+- **Route not registered.** A new module must also be imported in `frontend/src/mock-api/server.ts`. Otherwise every call returns `404 Route … not found`.
+- **Old data.** The browser keeps the data created by an older version. Reset it (next entry).
+
+</Accordion>
+<Accordion title="I want fresh demo data, or the demo data looks broken">
+
+There are two ways to reset:
+
+- **In the app:** open the user menu and choose **Load demo data** (the demo login is the owner). This calls `POST /admin/reset` with `demo: true`, which clears the workspace's business data and reloads the demo dataset. Users and API keys are kept.
+- **From scratch:** delete every `selleasy-mock-db:*` key and the session, then reload. The first request creates the workspace again.
+
+```js
+// browser devtools console
+Object.keys(localStorage)
+  .filter((k) => k.startsWith("selleasy-mock-db:") || k === "selleasy-session")
+  .forEach((k) => localStorage.removeItem(k))
+location.reload()
+```
+
+Clearing the site data in the browser settings, or using a private window, has the same effect.
+
+</Accordion>
+<Accordion title='The console warns "could not persist … (storage full?)", or changes vanish after a reload'>
+
+Each collection is saved as one JSON string in `localStorage`, which browsers usually cap at about **5 MB per origin**. When a write goes over the quota, the in-memory copy still has the change, but it isn't saved, so it's gone after a reload.
+
+Large imports or many simulated signals can reach the limit. Reset to the demo dataset (entry above) to free space. Mock mode isn't meant for large data sets; use the real API for that.
+
+Writes are also saved **250 ms after** the last change. Reloading within that window can lose the most recent change.
+
+</Accordion>
+<Accordion title="I changed NEXT_PUBLIC_DATA_SOURCE but the app still uses the old source">
+
+`NEXT_PUBLIC_*` values are inlined when Next.js builds or `next dev` starts.
+
+- **Locally:** stop and restart `next dev` after editing `frontend/.env.local`. A value set in the shell (such as `npm run dev:mock`) overrides the file.
+- **On Vercel:** edit the environment variable, then **redeploy**. The existing deployment keeps the value it was built with.
+
+To check which source a build uses, look at the login page ("Demo mode · sample data stored in this browser" versus "Connected to …") or the **Demo data** badge in the header.
+
+</Accordion>
+<Accordion title="Signing in to the demo is slow the first time">
+
+On first use, the browser creates the workspace and seeds the demo dataset, including bcrypt password hashes for the demo users. That takes about 1–2 seconds. Later requests only add the simulated 60–200 ms latency.
+
+</Accordion>
+<Accordion title="In mock mode, I'm logged out, or my old session doesn't work">
+
+Mock tokens start with `mock.` and are valid for 7 days. A token from the real API doesn't work in mock mode, and a mock token doesn't work against the API. Either way the client gets a `401`, clears the session and sends you to `/login`. If the mock data was cleared, the user id in the token no longer exists, which gives the same result. Sign in again with `jordan@acmegrowth.com` / `demo1234`.
+
+</Accordion>
+</Accordions>
+
 ## Rate limits
 
 <Accordions>
@@ -197,6 +281,8 @@ The request still returns `202`. Check `results[].ok` for each item.
 |---|---|---|
 | All `/api/v1` routes | 600 requests per 60 s per IP | `RATE_LIMIT_MAX` and `RATE_LIMIT_WINDOW_MS` in `backend/.env` |
 | `/auth/login`, `/auth/register`, `/auth/accept-invite` | 20 per 15 minutes in **production**, 1000 in other environments | Hard-coded in `modules/auth/routes.ts` |
+
+Mock mode has no rate limits (`express-rate-limit` is replaced by a no-op shim).
 
 A 429 response has a **plain-text** body, not the JSON envelope. Read the `RateLimit-Reset` header to know when to retry.
 

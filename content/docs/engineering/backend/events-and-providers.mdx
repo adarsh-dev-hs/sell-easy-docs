@@ -6,7 +6,7 @@ icon: Plug
 
 Two seams keep SellEasy's business logic independent of infrastructure and vendors:
 
-- **`EventBus`** (`backend/src/events/bus.ts`) publishes domain events. Today it is an in-process `EventEmitter`, and **nothing subscribes to it yet**.
+- **`EventBus`** (`backend/src/events/bus.ts`) publishes domain events. Today it is a small in-process bus (a `Map` of handlers, no `node:events`), and **nothing subscribes to it yet**.
 - **Provider adapters** (`backend/src/providers/index.ts`) wrap every external vendor: enrichment, CRM, email, LLM and connection testing. Only **mock** implementations exist. The `*_PROVIDER` env vars are validated, but any value other than `mock` logs a warning and falls back to the mock.
 
 ## Event bus
@@ -34,10 +34,30 @@ export interface EventBus {
 
 ### `MemoryEventBus`
 
-- `publish` calls `emitter.emit(type, payload)`, which invokes listeners **synchronously** inside the publishing request.
-- `subscribe` wraps each handler in `Promise.resolve(handler(payload)).catch(...)`. Async failures are logged as `Event handler failed` and never reach the publisher. A handler that **throws synchronously** does propagate to the publisher.
-- `createBus()` logs `EVENT_BUS_DRIVER=<x> is not implemented yet; using in-memory bus` for any driver other than `memory`.
-- Events don't survive a restart and aren't shared between processes.
+```ts title="src/events/bus.ts"
+class MemoryEventBus implements EventBus {
+  private handlers = new Map<keyof DomainEvents, Handler<keyof DomainEvents>[]>()
+
+  async publish<K extends keyof DomainEvents>(type: K, payload: DomainEvents[K]) {
+    for (const h of this.handlers.get(type) ?? []) {
+      queueMicrotask(() => {
+        Promise.resolve((h as Handler<K>)(payload)).catch((err) => logger.error({ err, type }, "Event handler failed"))
+      })
+    }
+  }
+
+  subscribe<K extends keyof DomainEvents>(type: K, handler: Handler<K>) {
+    this.handlers.set(type, [...(this.handlers.get(type) ?? []), handler as Handler<keyof DomainEvents>])
+  }
+}
+```
+
+- `subscribe` appends the handler to the list for that event type. Handlers run in subscription order.
+- `publish` schedules each handler with **`queueMicrotask`** and returns without waiting for them. Handlers start right after the publisher's current synchronous code, and before any timers or I/O.
+- A handler's failure never reaches the publisher. Synchronous throws are caught too, because the call happens inside `Promise.resolve(...)` within the microtask. Failures are logged as `Event handler failed` with the event type.
+- The bus uses only web-standard APIs, so it runs unchanged in the frontend's [mock data mode](/docs/engineering/frontend/mock-mode).
+- `createBus()` always returns the in-memory bus. `EVENT_BUS_DRIVER=eventbridge|sqs` is validated, logs a "not implemented yet" warning, and falls back to memory.
+- Events don't survive a restart and aren't shared between processes (or browser tabs).
 
 The module exports a singleton: `export const bus = createBus()`. To subscribe, register the handler once at startup (for example in `server.ts`, before `listen`):
 
@@ -81,6 +101,10 @@ export class EventBridgeBus implements EventBus {
 ```
 
 Then select it in `createBus()` when `config.EVENT_BUS_DRIVER === "eventbridge"`, and add `EVENTBRIDGE_BUS_NAME`, `EVENTBRIDGE_SOURCE` and `AWS_REGION` to the zod schema in `config.ts`. See [Orchestration agent](/docs/engineering/backend/orchestration-agent#moving-to-eventbridge--sqs--step-functions) for moving the agent onto that bus.
+
+<Callout type="warn" title="Keep cloud SDKs out of the browser copy">
+`frontend/scripts/sync-mock-core.mjs` copies every file under `backend/src` into the frontend's mock runtime, and `bus.ts` is shared. An `eventbridge-bus.ts` that imports `@aws-sdk/*` would be copied too, and would break the frontend's type-check (and its build, once the browser code imports it). Add such files to `SKIP` in the sync script, and don't import them statically from shared code: either inject the adapter from the Node-only `server.ts`, or give the shared file that selects it (`bus.ts`) a browser override. The same applies to real provider adapters. See [Contributing](/docs/engineering/contributing#keeping-mock-mode-in-sync).
+</Callout>
 
 <Callout type="warn" title="Publish after commit">
 With a remote bus, `publish` can fail after the database write has succeeded, which would silently drop the event. For guaranteed delivery, write events to an outbox table inside the same Postgres transaction and relay them to EventBridge.
@@ -156,7 +180,7 @@ Every mock `sleep()`s to feel realistic. The delay is **0 ms when `NODE_ENV=test
 | `EMAIL_PROVIDER` | `mock`, `ses`, `instantly`, `mailpool` | `mock` | Non-mock warns, uses the mock |
 | `LLM_PROVIDER` | `mock`, `anthropic` | `mock` | Non-mock warns, uses the mock |
 | `LINKEDIN_PROVIDER` | `mock`, `heyreach` | `mock` | Validated only; no warning |
-| `EVENT_BUS_DRIVER` | `memory`, `eventbridge`, `sqs` | `memory` | Non-memory warns, uses memory |
+| `EVENT_BUS_DRIVER` | `memory`, `eventbridge`, `sqs` | `memory` | Not implemented yet: logs a warning and uses the memory bus |
 | `ANTHROPIC_API_KEY` | string, optional | — | Unused |
 | `ANTHROPIC_MODEL` | string | `claude-opus-5` | Unused (the integration catalog's LLM settings also default `model` to `claude-opus-5`) |
 

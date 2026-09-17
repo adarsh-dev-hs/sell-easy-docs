@@ -16,6 +16,28 @@ This guide takes a fresh clone to a signed-in workspace. You run both apps from 
 
 You don't need a database, Docker or any cloud account. Data is stored in JSON files, and every vendor integration is mocked.
 
+## Quick start without the backend (mock mode)
+
+To click through the product without running the API, start only the web app in mock data mode:
+
+```bash
+npm install                 # root: installs concurrently and cross-env
+npm --prefix frontend install
+npm run dev:mock            # = cross-env NEXT_PUBLIC_DATA_SOURCE=mock npm --prefix frontend run dev
+```
+
+Or, from `frontend/`:
+
+```bash
+NEXT_PUBLIC_DATA_SOURCE=mock npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). The login form is pre-filled with the demo login **`jordan@acmegrowth.com` / `demo1234`** and shows "Demo mode · sample data stored in this browser". The first request creates the *Acme Growth Inc.* workspace and loads the demo dataset into `localStorage`, which takes a second or two. The header shows a **Demo data** badge while mock mode is on.
+
+<Callout type="info" title="Mock mode runs the real backend code in the browser">
+Every screen works the same as against the API, because the browser runs a generated copy of `backend/src`. Data stays in this browser only. See [Mock data mode](/docs/engineering/frontend/mock-mode) for how it works and its limits. For backend work, use the full setup below.
+</Callout>
+
 ## Set up
 
 <Steps>
@@ -29,7 +51,7 @@ cd sell-easy
 npm run install:all
 ```
 
-`install:all` runs `npm install` in three places: the repo root (which only installs `concurrently`), `backend/` and `frontend/`.
+`install:all` runs `npm install` in four places: the repo root (which only installs `concurrently` and `cross-env`), `backend/`, `frontend/` and `docs/`.
 
 </Step>
 <Step>
@@ -70,7 +92,7 @@ If you ran setup with `--demo`, you can also sign in as the demo teammates. Thei
 `scripts/setup.mjs` is safe to run more than once:
 
 1. **`backend/.env`**: if the file doesn't exist, setup copies `backend/.env.example` and replaces `JWT_SECRET` and `ENCRYPTION_KEY` with fresh 32-byte hex secrets. If the file exists, setup leaves it alone.
-2. **`frontend/.env.local`**: if the file doesn't exist, setup copies `frontend/.env.example`, which sets `NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1`.
+2. **`frontend/.env.local`**: if the file doesn't exist, setup copies `frontend/.env.example`, which sets `NEXT_PUBLIC_DATA_SOURCE=api` and `NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1`.
 3. **The database**, which depends on the flag:
    - Without `--demo`, setup runs `npm --prefix backend run bootstrap`. That creates the organization and owner from the `BOOTSTRAP_*` variables, the default ICP and the integration catalog (19 vendors, all disconnected). If the admin email already exists, it does nothing.
    - With `--demo`, setup runs `npm --prefix backend run seed:demo`. That creates the bootstrap org if needed and then **replaces** its business data with the demo dataset: accounts, contacts, signals, playbooks, runs, drafts, sequences, mailboxes, inbox, deals and teammates.
@@ -93,7 +115,7 @@ If another process is already using port 3000, `next dev` starts on **3001** ins
 
 ## Running the apps separately
 
-<Tabs items={['API only', 'Web only', 'Production build']}>
+<Tabs items={['API only', 'Web only', 'Web only (mock data)', 'Production build']}>
 <Tab value="API only">
 
 ```bash
@@ -112,7 +134,20 @@ npm run dev          # http://localhost:3000 (start the API first)
 npm run lint         # eslint (next core-web-vitals + typescript)
 ```
 
-The web app reads `NEXT_PUBLIC_API_URL` from `frontend/.env.local`. To use an API running somewhere else, change that value and restart `next dev`, because `NEXT_PUBLIC_*` values are inlined when the app is built.
+The web app reads `NEXT_PUBLIC_DATA_SOURCE` and `NEXT_PUBLIC_API_URL` from `frontend/.env.local`. To use an API running somewhere else, change the URL and restart `next dev`, because `NEXT_PUBLIC_*` values are inlined when the app is built.
+
+</Tab>
+<Tab value="Web only (mock data)">
+
+```bash
+npm run dev:mock                           # from the repo root
+# or
+cd frontend && NEXT_PUBLIC_DATA_SOURCE=mock npm run dev
+npm run mock:sync                          # after changing backend/src
+npm run mock:check                         # fails if src/mock-api/core is stale
+```
+
+No API is needed. Sign in with `jordan@acmegrowth.com` / `demo1234`.
 
 </Tab>
 <Tab value="Production build">
@@ -193,7 +228,7 @@ Go to **Settings → Team → Invite**. The app doesn't send invite emails yet, 
 |---|---|
 | `npm run seed:demo` (root) or `npm --prefix backend run seed:demo` | Replaces the bootstrap org's **business data** with the demo dataset. Keeps the org, users and API keys. |
 | `npm --prefix backend run db:reset` | Deletes **everything** in `DATA_DIR` (all orgs and users), then runs bootstrap again. It asks you to type `reset` first; pass `-- --yes` to skip the prompt. It refuses to run when `NODE_ENV=production`. |
-| **Reset workspace** in the user menu (owner only) or `POST /admin/reset` | Wipes the current org's business data from inside the running API. You can reload the demo data at the same time. Disabled in production and when `ENABLE_ADMIN_RESET=false`. |
+| **Load demo data** in the user menu, **Settings → Organization → Reset workspace** (owner only), or `POST /admin/reset` | Wipes the current org's business data from inside the running API. The user-menu item reloads the demo data at the same time; the settings dialog lets you choose. Disabled in production and when `ENABLE_ADMIN_RESET=false`. Works the same in mock mode. |
 
 <Callout type="error" title="Restart the API after a script changes the data files">
 While the API runs, it keeps every collection in memory. The seed and reset scripts run in a separate process and write straight to the JSON files, so a running API keeps serving the old data until you restart it. `npm run dev` doesn't restart the API when `db/*.json` changes. The in-app **Reset workspace** action doesn't have this problem because it runs inside the API.

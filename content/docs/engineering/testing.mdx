@@ -4,7 +4,7 @@ description: The backend API test suite, how to write new tests, frontend static
 icon: FlaskConical
 ---
 
-The backend has an end-to-end API test suite built with **vitest** and **supertest**. It runs the real Express app against a temporary JSON database, with no mocks beyond the built-in provider mocks. The frontend has no unit tests yet and is checked with TypeScript, ESLint and a production build. This page covers all of it, plus a manual smoke checklist and a CI setup.
+The backend has an end-to-end API test suite built with **vitest** and **supertest**. It runs the real Express app against a temporary JSON database, with no mocks beyond the built-in provider mocks. The frontend has no unit tests yet and is checked with TypeScript, ESLint, a production build and `npm run mock:check` (which keeps the in-browser copy of the backend current). This page covers all of it, plus a manual smoke checklist and a CI setup.
 
 ## Running tests
 
@@ -123,12 +123,28 @@ The frontend (`frontend/`) has no test runner. Use these static checks:
 
 ```bash
 cd frontend
-npx tsc --noEmit     # type-check (no dedicated script)
-npm run lint         # eslint with eslint-config-next (core-web-vitals + typescript)
+npx tsc --noEmit     # type-check (no dedicated script); also checks the generated src/mock-api/core
+npm run lint         # eslint with eslint-config-next (core-web-vitals + typescript); skips mock-api/core and overrides
 npm run build        # next build — catches server/client boundary and route errors
+npm run mock:check   # exit 1 if src/mock-api/core differs from ../backend/src (run mock:sync to fix)
 ```
 
 `frontend/src/lib/types.ts` mirrors `backend/src/domain/types.ts` by hand. When you change an API shape, update both files and run `tsc` in both apps.
+
+`mock:check` regenerates the mock core in memory from `../backend/src` (or `BACKEND_SRC`) and compares it with the committed files. It lists every `changed:` and `removed:` file. It also fails when a copied backend file imports a server-only module (`node:*`, `express`, `jsonwebtoken`, `pino`, `dotenv`, `helmet`, `cors`, `compression`) that has no browser override. Because `tsc` type-checks `src/mock-api/core`, a backend change that doesn't compile in the browser build shows up there too.
+
+### Mock-mode smoke test
+
+After changing backend code, check that the in-browser API still works:
+
+<Steps>
+<Step>`npm run mock:sync` in `frontend/` (or `npm run mock:sync` from the root), then `npm run dev:mock` from the root.</Step>
+<Step>Open `http://localhost:3000` in a **private window** (so there's no old `selleasy-mock-db:*` data). The login page says "Demo mode · sample data stored in this browser" and is pre-filled with `jordan@acmegrowth.com` / `demo1234`.</Step>
+<Step>Sign in. The first request seeds the workspace (a second or two). The header shows the **Demo data** badge, and the dashboard shows the demo KPIs.</Step>
+<Step>Walk through the screens you changed. Then check a write (for example, simulate a signal and approve a draft), reload the page, and confirm the change is still there.</Step>
+<Step>Download a CSV (analytics export or an import template) to exercise `fileResponse()`.</Step>
+<Step>Watch the browser console for `[mock-api]` errors, which are the in-browser equivalent of the API's `Unhandled error` log.</Step>
+</Steps>
 
 ## Manual / end-to-end smoke checklist
 
@@ -187,6 +203,7 @@ jobs:
       run:
         working-directory: frontend
     env:
+      NEXT_PUBLIC_DATA_SOURCE: api
       NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
     steps:
       - uses: actions/checkout@v4
@@ -196,9 +213,13 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npm run mock:check       # generated mock core matches backend/src
       - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm run build
+      - run: npm run build            # the mock-mode build used for demo deployments
+        env:
+          NEXT_PUBLIC_DATA_SOURCE: mock
 
   docs:
     runs-on: ubuntu-latest
@@ -216,8 +237,13 @@ jobs:
       - run: npm run build
 ```
 
+<Callout type="info" title="If the frontend lives in its own repository">
+`mock:check` reads `../backend/src` by default. In a CI job for the standalone frontend repository, check out the backend repository as well and point the script at it, for example with `actions/checkout` (`repository: <org>/sell-easy-backend`, `path: backend-src`) and `BACKEND_SRC=backend-src/src npm run mock:check`. `BACKEND_SRC` is resolved relative to `frontend/`.
+</Callout>
+
 Useful additions later:
 
 - A Playwright job that starts both apps (`npm run setup -- --demo && npm run dev`) and walks through the smoke checklist.
+- A cheaper Playwright job that needs no API: `npm run dev:mock`, then the mock-mode smoke test above.
 - A Postgres service container once the Postgres driver exists, running `npm test` with `DB_DRIVER=postgres`.
 - `npm audit --omit=dev` and secret scanning. Keep `.env.example` placeholder-only, as described in [Auth and security](/docs/engineering/backend/auth-and-security#secrets-handling).

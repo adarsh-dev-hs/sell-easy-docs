@@ -1,0 +1,7 @@
+{
+  "title": "Product architecture",
+  "description": "How the product is put together",
+  "icon": "Network",
+  "root": true,
+  "pages": ["index", "capability-map", "system-architecture", "data-flows", "integrations-landscape", "environments-and-data-modes", "target-architecture", "decisions"]
+}

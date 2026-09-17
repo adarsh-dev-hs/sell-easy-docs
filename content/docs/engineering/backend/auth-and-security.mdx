@@ -4,9 +4,33 @@ description: JWT sessions, passwords, invitations, API keys, roles, tenant isola
 icon: ShieldCheck
 ---
 
-Authentication is local to the API (`AUTH_DRIVER=local`). Users get HS256 JWTs signed with `JWT_SECRET` and passwords are hashed with bcrypt. Machine clients (vendor webhooks, Zapier) use organization API keys, stored only as SHA-256 hashes. Authorization is a four-level role model enforced by the `route()` wrapper. Tenant isolation is enforced in the repository layer. Cognito, Auth0 and Google/Microsoft SSO exist only as env keys.
+Authentication is local to the API (`AUTH_DRIVER=local`). Users get HS256 JWTs signed with `JWT_SECRET` and passwords are hashed with bcrypt. Machine clients (vendor webhooks, Zapier) use organization API keys, stored only as SHA-256 hashes. Authorization is a four-level role model enforced by `executeRoute()`. Tenant isolation is enforced in the repository layer. Cognito, Auth0 and Google/Microsoft SSO exist only as env keys.
 
-Relevant files: `src/middleware/auth.ts`, `src/modules/auth/routes.ts`, `src/modules/organization/service.ts`, `src/lib/crypto.ts`, `src/lib/http.ts`, `src/app.ts`.
+Relevant files: `src/middleware/auth.ts`, `src/lib/roles.ts`, `src/lib/route-runtime.ts`, `src/modules/auth/routes.ts`, `src/modules/organization/service.ts`, `src/lib/crypto.ts`, `src/lib/ids.ts`, `src/app.ts`.
+
+## Authentication functions
+
+`src/middleware/auth.ts` exports plain functions that take header values, not Express requests. Nothing augments `req`, and there is no Express auth middleware.
+
+| Function | Purpose |
+|---|---|
+| `signToken(user)` | Issues a JWT for `{ id, orgId, role }` |
+| `authenticateBearer(header)` | Verifies an `Authorization` header value and returns an `AuthContext` |
+| `authenticateApiKey(key, scope?)` | Looks up an API key and returns an `AuthContext` |
+| `authenticateRequest(mode, headers, scope?)` | Called by `executeRoute()`. `"user"` → `authenticateBearer(headers.authorization)`. `"apiKey"` → `authenticateApiKey(headers["x-api-key"] ?? <Authorization value without "Bearer ">, scope)`. |
+| `assertRole`, `atLeast`, `AuthContext` | Re-exported from `src/lib/roles.ts` |
+
+```ts title="src/lib/roles.ts"
+export interface AuthContext {
+  userId: string
+  orgId: string
+  role: Role
+  via: "jwt" | "apiKey"
+  scopes?: string[]
+}
+```
+
+Handlers read the principal as `ctx.auth` and `ctx.orgId`.
 
 ## JWT sessions
 
@@ -33,17 +57,21 @@ The algorithm is the `jsonwebtoken` default, HS256. The auth endpoints return `{
 
 ### Verification
 
-`authenticateJwt(req)` runs for every route with `auth: "user"` (the default):
+`authenticateBearer(header)` runs for every route with `auth: "user"` (the default):
 
 <Steps>
-<Step>It requires `Authorization: Bearer <token>`. Otherwise it returns `401 Authentication required`.</Step>
+<Step>It requires a header value of the form `Bearer <token>`. Otherwise it returns `401 Authentication required`.</Step>
 <Step>`jwt.verify(token, JWT_SECRET)`. Any failure, including expiry, returns `401 Session expired or invalid token`.</Step>
 <Step>**It re-reads the user**: `db.users.get(payload.org, payload.sub)`. If the user is missing or `status !== "active"`, it returns `401 User no longer has access`.</Step>
-<Step>It sets `req.auth = { userId, orgId, role: user.role, via: "jwt" }`. The **stored** role is used, not the claim, so role changes and removals apply on the next request.</Step>
+<Step>It returns `{ userId, orgId, role: user.role, via: "jwt" }`, which `executeRoute()` exposes as `ctx.auth`. The **stored** role is used, not the claim, so role changes and removals apply on the next request.</Step>
 </Steps>
 
 <Callout type="info" title="No server-side logout or refresh">
 `POST /auth/logout` is a no-op that returns 204, and the client discards the token. There are no refresh tokens and no revocation list. A token stays valid until `exp` unless its user is removed or deactivated. Rotating `JWT_SECRET` invalidates every session. The frontend clears its session when it gets a `401` while holding a token.
+</Callout>
+
+<Callout type="error" title="Mock mode tokens are for demos only">
+In the frontend's [mock data mode](/docs/engineering/frontend/mock-mode), `middleware/auth.ts` is replaced by a browser override. `signToken` there returns `mock.` followed by **unsigned** base64 JSON (`{ sub, org, role, exp }`, valid for 7 days), and anyone can forge one. `lib/crypto.ts` is replaced too: `sha256` becomes a non-cryptographic FNV-1a digest, and `encrypt`/`decrypt` become base64 with a `mock.` prefix. This is acceptable only because the whole database lives in the visitor's own browser. Never use mock mode with real credentials or customer data, and never copy these overrides into server code.
 </Callout>
 
 ## Passwords
@@ -87,12 +115,12 @@ sequenceDiagram
 | Aspect | Implementation |
 |---|---|
 | Creation | `POST /api-keys` (admin and above) with `{ name, scopes }`. Scopes must be in `API_SCOPES`. |
-| Secret format | `randomSecret("se_live_", 32)`: the prefix `se_live_` plus 32 characters from `[a-zA-Z0-9]` (`crypto.randomBytes`, mapped by modulo). |
+| Secret format | `randomSecret("se_live_", 32)`: the prefix `se_live_` plus `randomToken(32)`, which is 32 characters from `[a-zA-Z0-9]` (Web Crypto `globalThis.crypto.getRandomValues`, mapped by modulo, in `lib/ids.ts`). |
 | Storage | `hash: sha256(secret)` as hex, and `prefix: secret.slice(0, 12)` for display. **The plaintext is returned once**, in the create response (`{ apiKey, secret }`). |
-| Lookup | `authenticateApiKey` reads the `x-api-key` header, or falls back to `Authorization: Bearer <key>`. It then calls `db.apiKeys.findGlobal({ hash: sha256(key), revoked: false })`. |
+| Lookup | `authenticateRequest` passes the `x-api-key` header, or falls back to the `Authorization: Bearer <key>` value. `authenticateApiKey` then calls `db.apiKeys.findGlobal({ hash: sha256(key), revoked: false })`. |
 | Scope check | If the route declares `scope`, a key without it gets `403 API key lacks the "<scope>" scope`. |
 | Usage tracking | `lastUsedAt` is updated on every successful call. |
-| Principal | `req.auth = { userId: record.createdBy, orgId: record.orgId, role: "member", via: "apiKey", scopes }` |
+| Principal | `{ userId: record.createdBy, orgId: record.orgId, role: "member", via: "apiKey", scopes }` (returned as the `AuthContext`) |
 | Revocation | `POST /api-keys/:id/revoke` sets `revoked: true`. The key then fails lookup (`401 Invalid API key`). Keys are never deleted. |
 
 Defined scopes: `accounts:read`, `accounts:write`, `signals:write`, `outreach:read`, `outreach:write`, `pipeline:read`, `pipeline:write`.
@@ -101,11 +129,11 @@ Defined scopes: `accounts:read`, `accounts:write`, `signals:write`, `outreach:re
 `POST /webhooks/signals` (scope `signals:write`) is the only `auth: "apiKey"` route. The other scopes can be assigned but no endpoint checks them yet. JWT routes never accept API keys.
 </Callout>
 
-SHA-256 without a salt is acceptable here because the secrets are high-entropy random strings (about 190 bits), so they are not open to dictionary attacks the way passwords are.
+SHA-256 without a salt is acceptable here because the secrets are high-entropy random strings (about 190 bits; the modulo mapping adds a slight bias), so they are not open to dictionary attacks the way passwords are.
 
 ## Roles
 
-```ts title="src/middleware/auth.ts"
+```ts title="src/lib/roles.ts"
 const RANK: Record<Role, number> = { viewer: 0, member: 1, admin: 2, owner: 3 }
 export const atLeast = (role: Role): Role[] => (Object.keys(RANK) as Role[]).filter((r) => RANK[r] >= RANK[role])
 export function assertRole(auth: AuthContext | undefined, roles: Role[]) {
@@ -127,7 +155,7 @@ The defaults (GET is viewer and above, writes are member and above) are describe
 
 ## Tenant isolation
 
-- The tenant id comes only from the verified principal (`req.auth.orgId`). No route takes an `orgId` parameter.
+- The tenant id comes only from the verified principal (`ctx.auth.orgId`, also available as `ctx.orgId`). No route takes an `orgId` parameter.
 - Every repository call is scoped by `orgId`. `get`, `update` and `remove` check the record's `orgId`, so guessing another tenant's id gives `404`.
 - Cross-tenant reads (`findGlobal`) are limited to login, API key lookup, invite acceptance, email uniqueness, bootstrap and seeding.
 - Services validate every referenced id inside the same org (owner ids, account ids, contact ids, sequence ids, mailbox ids) before writing.
@@ -180,7 +208,7 @@ Rate limits use the in-memory store from `express-rate-limit`, so each API proce
 
 ## Input validation
 
-- Every body, query and path parameter goes through zod in `route()`. Unknown body keys are **stripped** (zod's default for `z.object`), so clients can't set server-owned fields like `orgId`, `score` or `passwordHash`.
+- Every body, query and path parameter goes through zod in `executeRoute()`. Unknown body keys are **stripped** (zod's default for `z.object`), so clients can't set server-owned fields like `orgId`, `score` or `passwordHash`.
 - Services add semantic checks: references exist in the same org, domains contain a dot, emails are unique, enum transitions are valid, and ICP thresholds satisfy `A > B > C`.
 - Sort fields are whitelisted (`parseSort`). Filter values reach the repository only as data, never as code, so the JSON driver has no injection surface. A future SQL driver must use parameterized queries.
 - CSV import uses `csv-parse` and reports row-level errors instead of failing the whole request.

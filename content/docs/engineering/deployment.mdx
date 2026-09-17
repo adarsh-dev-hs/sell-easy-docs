@@ -4,14 +4,14 @@ description: Build and run commands, the production checklist, the target AWS de
 icon: Rocket
 ---
 
-SellEasy ships as two deployables: the **API** (`backend/`, a Node process) and the **web app** (`frontend/`, Next.js). Today the API persists to JSON files, so it must run as **one instance with a persistent disk**. The target AWS topology (ECS Fargate, RDS, ElastiCache, EventBridge/SQS and so on) needs the Postgres driver and the other adapters described in [Tech debt](/docs/engineering/tech-debt). The repository contains no Dockerfile, docker-compose or IaC yet; the files on this page are **examples**.
+SellEasy ships as two deployables: the **API** (`backend/`, a Node process) and the **web app** (`frontend/`, Next.js). For stakeholder demos, the web app can also be deployed **on its own** in mock data mode (see [Frontend-only demo on Vercel](#frontend-only-demo-on-vercel)). Today the API persists to JSON files, so it must run as **one instance with a persistent disk**. The target AWS topology (ECS Fargate, RDS, ElastiCache, EventBridge/SQS and so on) needs the Postgres driver and the other adapters described in [Tech debt](/docs/engineering/tech-debt). The repository contains no Dockerfile, docker-compose or IaC yet; the files on this page are **examples**.
 
 ## Build and start
 
 | App | Build | Start | Port |
 |---|---|---|---|
 | API | `npm --prefix backend run build` (`tsc -p tsconfig.build.json` → `backend/dist/`) | `npm --prefix backend start` → `node dist/server.js` | `PORT` (4000) |
-| Web | `npm --prefix frontend run build` (`next build`, with `NEXT_PUBLIC_API_URL` set **at build time**) | `npm --prefix frontend start` → `next start` | 3000 (Next.js default, or `PORT`) |
+| Web | `npm --prefix frontend run build` (`next build`, with `NEXT_PUBLIC_DATA_SOURCE` and `NEXT_PUBLIC_API_URL` set **at build time**) | `npm --prefix frontend start` → `next start` | 3000 (Next.js default, or `PORT`) |
 | Both | `npm run build` (root) | `npm start` (root, `concurrently`) | |
 
 Requirements:
@@ -22,6 +22,62 @@ Requirements:
 - Run `npm run bootstrap` once against the target data directory (or database) before first use.
 - Health check: `GET /health` returns `{ "status": "ok", "env": "...", "db": "json", "uptime": 123 }`. It is not rate-limited and not logged.
 - The process handles `SIGTERM`/`SIGINT` by closing the server, and force-exits after 10 s.
+
+## Frontend-only demo on Vercel
+
+Mock data mode lets you ship a clickable demo without hosting the API, a database or secrets. The browser runs the generated copy of the backend in `frontend/src/mock-api/core` and keeps the data in `localStorage`. See [Mock data mode](/docs/engineering/frontend/mock-mode).
+
+<Steps>
+<Step>
+
+### Make sure the mock core is current
+
+```bash
+cd frontend
+npm run mock:check    # must print "mock core up to date"
+```
+
+If it fails, run `npm run mock:sync` and commit the regenerated `src/mock-api/core`. Vercel builds only the frontend (which is its own git repository), so the generated copy has to be committed: the build never reads `backend/`.
+
+</Step>
+<Step>
+
+### Create the Vercel project
+
+- **Root directory:** the folder that contains `frontend/package.json`. That's the repository root when you import the standalone frontend repository, or `frontend` in a monorepo checkout.
+- **Framework preset:** Next.js (build `next build`, the default install command)
+- **Environment variables** (Production and Preview):
+
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_DATA_SOURCE` | `mock` |
+
+`NEXT_PUBLIC_API_URL` isn't needed in mock mode.
+
+</Step>
+<Step>
+
+### Deploy and share
+
+Deploy, then open the site. The login page is pre-filled with `jordan@acmegrowth.com` / `demo1234` and says "Demo mode · sample data stored in this browser". Every visitor gets their own workspace in their own browser, seeded on first use.
+
+</Step>
+</Steps>
+
+<Callout type="warn" title="A mock deployment is a demo, not a product">
+Mock tokens are unsigned and the mock "crypto" is not real, so never put real customer data or real vendor keys into a mock deployment. Webhooks and API keys can't be used from outside the browser. Nothing is shared between visitors or devices.
+</Callout>
+
+### Switching the deployment to the real API
+
+When a backend is hosted:
+
+1. Deploy the API (see the checklist below) and add the Vercel domain(s) to its `CORS_ORIGINS`, for example `CORS_ORIGINS=https://selleasy-demo.vercel.app`. Preview deployments use different domains, so list those too if they should work.
+2. In Vercel, set `NEXT_PUBLIC_DATA_SOURCE=api` (or delete it, since `api` is the default) and `NEXT_PUBLIC_API_URL=https://<api host>/api/v1`.
+3. **Redeploy.** `NEXT_PUBLIC_*` values are inlined at build time, so editing the variables has no effect until the next build.
+4. Sign in with a user from the API's database. Data entered in mock mode stays in each visitor's browser and isn't migrated.
+
+To go back to the demo, set `NEXT_PUBLIC_DATA_SOURCE=mock` and redeploy. A common setup is two Vercel projects (or environments) from the same repository: one `mock` for demos and one `api` for the real app.
 
 ## Production checklist
 
@@ -34,7 +90,7 @@ Requirements:
 - [ ] No `.env` file baked into images. Secrets injected at runtime.
 </Accordion>
 <Accordion title="Network">
-- [ ] `CORS_ORIGINS` = the exact web origin(s). Never `*`.
+- [ ] `CORS_ORIGINS` = the exact web origin(s), including the Vercel domain if the web app is hosted there. Never `*`.
 - [ ] TLS terminated at CloudFront/ALB. HSTS is sent by helmet.
 - [ ] `trust proxy` (hard-coded to `1`) matches your proxy depth. Behind CloudFront **and** an ALB there are two hops, so adjust `app.set("trust proxy", …)`, or rate limiting will key on the wrong IP.
 - [ ] `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` tuned. With several replicas, use a shared rate-limit store or WAF rules, since the built-in store is per-process.
@@ -53,6 +109,10 @@ Requirements:
 </Accordion>
 <Accordion title="Providers">
 - [ ] `*_PROVIDER` values: every non-`mock` value currently **falls back to the mock** with a warning. Confirm in the logs that no production traffic relies on mocks unintentionally.
+</Accordion>
+<Accordion title="Web app">
+- [ ] `NEXT_PUBLIC_DATA_SOURCE=api` (or unset) and `NEXT_PUBLIC_API_URL` pointing at the production API, set **before** the build
+- [ ] The header shows no **Demo data** badge, and the login page shows "Connected to …" rather than "Demo mode"
 </Accordion>
 </Accordions>
 
@@ -91,7 +151,7 @@ flowchart TB
 
 | Component | AWS service | Env keys | Prerequisite in code |
 |---|---|---|---|
-| Web | CloudFront + S3, or Vercel | `NEXT_PUBLIC_API_URL` | None. The app is a client-rendered Next.js app. Confirm static-export compatibility, or use Vercel or a Node server. |
+| Web | CloudFront + S3, or Vercel | `NEXT_PUBLIC_DATA_SOURCE`, `NEXT_PUBLIC_API_URL` | None. The app is a client-rendered Next.js app. Confirm static-export compatibility, or use Vercel or a Node server. |
 | API | ECS Fargate behind an ALB (health check `/health`) | Core block | Postgres driver (for more than one task) |
 | Database | RDS PostgreSQL | `DATABASE_URL`, `PG*`, `DB_POOL_*` | `createPostgresRepository` + migrations |
 | Cache / rate limits | ElastiCache Redis | `CACHE_DRIVER`, `REDIS_*` | Cache layer + Redis rate-limit store |
@@ -210,7 +270,7 @@ volumes:
   pg-data:
 ```
 
-Run the web app on the host with `npm --prefix frontend run dev`, using the default `NEXT_PUBLIC_API_URL`.
+Run the web app on the host with `npm --prefix frontend run dev`, using the default `NEXT_PUBLIC_DATA_SOURCE` (`api`) and `NEXT_PUBLIC_API_URL`.
 
 ## Logging and observability
 
@@ -220,7 +280,7 @@ Run the web app on the host with `npm --prefix frontend run dev`, using the defa
   - Redacted paths: `req.headers.authorization`, `req.headers['x-api-key']`, `*.password`, `*.apiKey`.
 - **pino-http** logs one line per request, with method, URL, status and response time, and assigns request ids (`req.id`). `/health` is excluded.
 - **Unhandled errors** are logged as `Unhandled error` with the error and path. Clients only see `internal_error`.
-- **Warnings worth alerting on**: `… adapter not implemented yet; using mock`, `EVENT_BUS_DRIVER=… is not implemented yet`, `Event handler failed`, `Slack notification failed`, and `No organization found in the database` at startup.
+- **Warnings worth alerting on**: `… adapter not implemented yet; using mock`, `Event handler failed`, `Slack notification failed`, and `No organization found in the database` at startup.
 - **Not yet implemented**: Sentry (`SENTRY_DSN`) and Datadog APM (`DD_SERVICE`, `DD_ENV`, `DD_AGENT_HOST`). To add them, initialize `@sentry/node` / `dd-trace` at the very top of `src/server.ts` (before `createApp`), and forward `errorHandler`'s 500s to Sentry.
 - **Suggested metrics**: request rate, latency and 5xx by route; agent run status counts (`GET /agent/stats`); pending drafts; unprocessed signals (`GET /signals/stats`); and JSON file sizes in `DATA_DIR` while on the JSON driver.
 

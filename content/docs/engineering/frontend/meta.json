@@ -1,5 +1,12 @@
 {
   "title": "Frontend",
   "icon": "Monitor",
-  "pages": ["index", "data-layer", "auth-and-routing", "ui-conventions", "adding-a-page"]
+  "pages": [
+    "index",
+    "data-layer",
+    "mock-mode",
+    "auth-and-routing",
+    "ui-conventions",
+    "adding-a-page"
+  ]
 }

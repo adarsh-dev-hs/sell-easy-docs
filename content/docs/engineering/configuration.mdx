@@ -4,7 +4,7 @@ description: Every environment variable for the API and web app, its default, wh
 icon: SlidersHorizontal
 ---
 
-The API reads its configuration from environment variables, loaded from `backend/.env` by `dotenv` (`import "dotenv/config"` in `src/config.ts`). `backend/.env.example` lists every key the target architecture needs. **Only a subset is validated and used today**; the rest are reserved for drivers and adapters that aren't built yet. The web app needs a single variable.
+The API reads its configuration from environment variables, loaded from `backend/.env` by `dotenv` (`import "dotenv/config"` in `src/config.ts`). `backend/.env.example` lists every key the target architecture needs. **Only a subset is validated and used today**; the rest are reserved for drivers and adapters that aren't built yet. The web app needs two variables: where its data comes from, and the API URL.
 
 ## How configuration is loaded
 
@@ -108,7 +108,7 @@ Read by `npm run bootstrap`, `seed:demo` and `db:reset`. See [Seeding and script
 |---|---|---|---|---|
 | `AWS_REGION` | `us-east-1` | — | Reserved | All AWS SDK clients |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | placeholders | — | Reserved | Prefer IAM task roles in ECS |
-| `EVENT_BUS_DRIVER` | `memory` | `memory \| eventbridge \| sqs` | **Active** (only warns when not `memory`) | `events/bus.ts` |
+| `EVENT_BUS_DRIVER` | `memory` | `memory \| eventbridge \| sqs` | Validated; `createBus()` logs a warning for anything but `memory` and uses the in-memory bus | `events/bus.ts` |
 | `EVENTBRIDGE_BUS_NAME`, `EVENTBRIDGE_SOURCE` | `selleasy-events`, `selleasy.api` | — | Reserved | Event publishing |
 | `SQS_SIGNALS_QUEUE_URL`, `SQS_OUTREACH_QUEUE_URL` | dummy | — | Reserved | Agent and outreach workers |
 | `SNS_TOPIC_ARN` | dummy | — | Reserved | Notification fan-out |
@@ -191,11 +191,26 @@ Read by `npm run bootstrap`, `seed:demo` and `db:reset`. See [Seeding and script
 
 `frontend/.env.local`, copied from `frontend/.env.example` by `npm run setup`:
 
-| Variable | Default | Used by |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:4000/api/v1` | `frontend/src/lib/api/client.ts` (`API_URL`, trailing slash removed). The fallback is the same URL. |
+```bash title="frontend/.env.example"
+# Where the app gets its data:
+#   api  — call the SellEasy backend at NEXT_PUBLIC_API_URL (default)
+#   mock — run fully in the browser with demo data (no backend needed; e.g. a Vercel demo)
+NEXT_PUBLIC_DATA_SOURCE=api
 
-`NEXT_PUBLIC_*` values are **inlined at build time**, so changing them requires `next build` again. The origin the web app is served from (for example `http://localhost:3000`) must be listed in the backend's `CORS_ORIGINS`.
+# URL of the SellEasy API (backend/) — used when NEXT_PUBLIC_DATA_SOURCE=api
+NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1
+```
+
+| Variable | Default | Values | Used by |
+|---|---|---|---|
+| `NEXT_PUBLIC_DATA_SOURCE` | `api` | `api \| mock`. Any value other than `mock` means `api`. | `frontend/src/lib/api/client.ts` (`DATA_SOURCE`, `IS_MOCK`). `mock` routes every request to the in-browser API in `src/mock-api` and shows the demo-mode hints on the login page and header. See [Mock data mode](/docs/engineering/frontend/mock-mode). |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:4000/api/v1` | URL | `frontend/src/lib/api/client.ts` (`API_URL`, trailing slash removed). The fallback is the same URL. Ignored in `mock` mode. |
+
+<Callout type="warn" title="NEXT_PUBLIC_* values are inlined at build time">
+Next.js replaces `process.env.NEXT_PUBLIC_*` with literal values when it builds (and when `next dev` starts). Changing either variable needs a restart of `next dev`, or a **new build and redeploy** (on Vercel, redeploy after editing the environment variable). A running deployment never switches data source on its own.
+</Callout>
+
+In `api` mode, the origin the web app is served from (for example `http://localhost:3000`, or your Vercel domain) must be listed in the backend's `CORS_ORIGINS`. Mock mode makes no network calls to the API, so CORS doesn't apply. The root script `npm run dev:mock` sets `NEXT_PUBLIC_DATA_SOURCE=mock` with `cross-env`.
 
 ## Generating secrets
 
@@ -228,6 +243,7 @@ Stored vendor credentials can only be decrypted with the key that encrypted them
 | `DB_DRIVER` / `DATA_DIR` | `json` / `./db` | `json` / `os.tmpdir()/selleasy-test-<pid>` | `json` on a persistent volume until Postgres lands | `postgres` once implemented |
 | `*_PROVIDER` | `mock` | `mock` | real adapters as they land | real adapters |
 | `SLACK_WEBHOOK_URL` | empty | empty | staging channel | production channel |
+| `NEXT_PUBLIC_DATA_SOURCE` | `api` (or `mock` for UI-only work) | — | `api` (a separate `mock` deployment for demos) | `api` |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:4000/api/v1` | — | `https://api.staging…/api/v1` | `https://api…/api/v1` |
 
 See [Deployment](/docs/engineering/deployment) for the full production checklist.

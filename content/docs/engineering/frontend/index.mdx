@@ -6,6 +6,13 @@ icon: Monitor
 
 The web app in `frontend/` is a Next.js 16 App Router application. It is a **thin client**: every screen reads and writes through the SellEasy API, using typed TanStack Query hooks. The only thing the browser keeps is the session token, plus a cached copy of the current user and org.
 
+Where "the API" lives is a build-time switch, `NEXT_PUBLIC_DATA_SOURCE`:
+
+- **`api`** (default): requests go over HTTP to the Express backend at `NEXT_PUBLIC_API_URL`.
+- **`mock`**: requests go to an in-browser copy of the backend (`src/mock-api`) that stores demo data in `localStorage`. No server is needed, so the frontend can be deployed alone (for example on Vercel) for demos. See [Mock data mode](/docs/engineering/frontend/mock-mode).
+
+Pages and hooks don't know which one is active. Only `src/lib/api/client.ts` does.
+
 ## Stack
 
 | Concern | Library | Version | Notes |
@@ -26,13 +33,14 @@ The web app in `frontend/` is a Next.js 16 App Router application. It is a **thi
 | Dates | `date-fns` | 4.4 | `lib/format.ts` |
 | Fonts | Geist and Geist Mono (`next/font/google`) | — | |
 
-## No data in the browser
+## No business logic in the UI
 
-Earlier prototypes kept a demo database in `localStorage` (`sell-easy-demo`). That's gone, and `SessionGate` deletes the old key on load. The rules now are:
+Earlier prototypes kept a hand-written demo database in `localStorage` (`sell-easy-demo`). That's gone, and `SessionGate` deletes the old key on load. (Mock mode is different: it runs the **real** backend code, generated from `backend/src`, and uses its own `selleasy-mock-db:*` keys.) The rules now are:
 
-- **All business logic runs on the API.** That includes scoring, dedup, enrollment eligibility, agent runs, analytics and CSV export.
-- **Only the session is persisted.** The `selleasy-session` key holds `{ token, user, org }`. `user` and `org` are a cache, refreshed from `GET /auth/me` on every load.
-- **Every read goes through a hook in `@/lib/api`.** Pages never call `fetch` themselves.
+- **All business logic lives in the API code.** That includes scoring, dedup, enrollment eligibility, agent runs, analytics and CSV export.
+- **Only the session is persisted by the UI.** The `selleasy-session` key holds `{ token, user, org }`. `user` and `org` are a cache, refreshed from `GET /auth/me` on every load.
+- **Every read goes through a hook in `@/lib/api`.** Pages never call `fetch` (or the mock API) themselves.
+- **Mock mode is visible.** When `IS_MOCK` is true, the login page pre-fills the demo login and says "Demo mode · sample data stored in this browser", and the header shows a **Demo data** badge.
 - **After a mutation, the app refetches.** `useApiMutation` invalidates every cached query by default, so every screen shows what the server now has. The only optimistic update is the pipeline stage move.
 - **The UI keeps a copy of some constants only for labels.** Lists such as industries, deal stages and API scopes come from `GET /meta`. `lib/constants.ts` provides fallbacks and display labels.
 
@@ -58,8 +66,13 @@ frontend/src/
 │   ├── accounts/ contacts/ signals/ agent/ outreach/ pipeline/ integrations/ settings/
 │   └── providers.tsx           QueryClient, ThemeProvider, TooltipProvider, SessionGate, Toaster
 ├── hooks/use-mobile.ts         Used by the shadcn sidebar
+├── mock-api/                   In-browser API for NEXT_PUBLIC_DATA_SOURCE=mock
+│   ├── server.ts               mockRequest(): route matching, demo seeding, latency, resetMockDatabase()
+│   ├── core/                   GENERATED copy of backend/src (npm run mock:sync) — don't edit
+│   ├── overrides/              Browser versions of config, logger, crypto, http, auth, json-repository
+│   └── shims/                  express-rate-limit no-op
 └── lib/
-    ├── api/                    client.ts, query.ts, auth-store.ts, index.ts, hooks/*
+    ├── api/                    client.ts (api/mock switch), query.ts, auth-store.ts, index.ts, hooks/*
     ├── types.ts                API contract (mirrors backend/src/domain/types.ts)
     ├── constants.ts            UI labels, tier and status styles, fallbacks
     ├── format.ts               currency, percent, timeAgo, shortDate, initials…
@@ -93,7 +106,7 @@ Every authenticated page lives under `src/app/(app)/`. It gets the sidebar and h
 | Component | Hooks | Endpoints |
 |---|---|---|
 | `AppSidebar` | `useAgentStats`, `useInboxCounts`, `useSignalStats` (for the nav badges), `useMeta`, `useResetWorkspace` | `/agent/stats`, `/inbox/counts`, `/signals/stats`, `/meta`, `POST /auth/logout`, `POST /admin/reset` |
-| `AppHeader` | `useAgentSettings`, `useSetAutopilot`, `useSimulateSignal`, `useAccount` and `useSequence` (for breadcrumb labels) | `/agent/settings`, `POST /signals/simulate` |
+| `AppHeader` | `useAgentSettings`, `useSetAutopilot`, `useSimulateSignal`, `useAccount` and `useSequence` (for breadcrumb labels). Shows the **Demo data** badge when `IS_MOCK`. | `/agent/settings`, `POST /signals/simulate` |
 | `CommandMenu` | `useSearch` | `GET /search` |
 | `Notifications` | `useNotifications` (polls every 30 s), `useMarkNotificationRead`, `useMarkAllNotificationsRead` | `/notifications/*` |
 
@@ -108,14 +121,16 @@ flowchart TD
   M --> K["@/lib/api hooks"]
   C --> K
   K --> Q["useApiQuery / useApiMutation"]
-  Q --> A["api client<br/>(fetch + Bearer)"]
-  A --> API[("SellEasy API")]
+  Q --> A["api client<br/>(Bearer token)"]
+  A -->|"api: fetch"| API[("SellEasy API")]
+  A -->|"mock: mockRequest()"| MOCK[("src/mock-api<br/>+ localStorage")]
 ```
 
 ## Next steps
 
 <Cards>
   <Card title="Data layer" href="/docs/engineering/frontend/data-layer" description="The API client, query helpers, hooks, cache keys and optimistic updates." />
+  <Card title="Mock data mode" href="/docs/engineering/frontend/mock-mode" description="Running the backend code in the browser for frontend-only demos." />
   <Card title="Auth and routing" href="/docs/engineering/frontend/auth-and-routing" description="The session store, the route guard, login modes, role gating and URL parameters." />
   <Card title="UI conventions" href="/docs/engineering/frontend/ui-conventions" description="shadcn components, shared building blocks, theming, forms, tables and lint rules." />
   <Card title="Adding a page" href="/docs/engineering/frontend/adding-a-page" description="A full walkthrough, from backend module to sidebar item." />

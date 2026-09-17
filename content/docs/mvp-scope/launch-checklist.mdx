@@ -1,0 +1,98 @@
+---
+title: Launch checklist
+description: Product, engineering, security, data, and GTM and support readiness checks that must pass before the SellEasy MVP launches to paying design partners.
+icon: Rocket
+---
+
+Work through this checklist in the two weeks before the MVP launch (end of [Phase 2](/docs/roadmap/phase-2-real-integrations)). Each section has an owner, who signs it off in the go / no-go meeting. Items marked **(gate)** block launch.
+
+<Callout type="warn" title="Most-missed items">
+Flipping the web build to `NEXT_PUBLIC_DATA_SOURCE=api`, setting `ENABLE_SIMULATION=false`, backing up `ENCRYPTION_KEY`, and rehearsing a database restore.
+</Callout>
+
+## Product — owner: Product manager
+
+- [ ] **(gate)** Every Must item in [In scope](/docs/mvp-scope/in-scope) is shipped to production.
+- [ ] **(gate)** [Acceptance criteria](/docs/mvp-scope/acceptance-criteria) pass in staging; production spot-checks recorded.
+- [ ] Default playbooks and sequence templates reviewed for tone and compliance (unsubscribe footer, physical address).
+- [ ] Empty states guide a new workspace through import → connect → playbook → sequence.
+- [ ] In-app copy no longer implies features that are mocked or deferred (for example LinkedIn sending).
+- [ ] Release notes and a "what's included" page for design partners.
+- [ ] Success-metric dashboard live ([Success metrics](/docs/mvp-scope/success-metrics)).
+- [ ] Feedback channel per design partner (shared Slack channel or equivalent).
+
+## Engineering — owner: Lead engineer
+
+**Configuration**
+
+- [ ] **(gate)** Production web build has **`NEXT_PUBLIC_DATA_SOURCE=api`** and the production **`NEXT_PUBLIC_API_URL`**; the "Demo data" badge is absent.
+- [ ] **(gate)** API runs with `NODE_ENV=production` and **`ENABLE_SIMULATION=false`**; `ENABLE_ADMIN_RESET=false`.
+- [ ] **(gate)** `DB_DRIVER=postgres`; migrations applied; JSON driver not used in any customer environment.
+- [ ] `*_PROVIDER` values set to real adapters (`LLM_PROVIDER=anthropic`, `EMAIL_PROVIDER=ses`, `CRM_PROVIDER=hubspot`, `ENRICHMENT_PROVIDER=live`); logs show **no** "adapter not implemented yet; using mock" warnings.
+- [ ] `ANTHROPIC_MODEL=claude-opus-5`, `ANTHROPIC_FAST_MODEL=claude-haiku-4-5` (or the models chosen after evaluation); token budgets set per workspace.
+- [ ] `CORS_ORIGINS` lists only the production web origin(s).
+- [ ] `trust proxy` matches the CloudFront + ALB hop count; rate limits use a shared store.
+- [ ] `EVENT_BUS_DRIVER` set to the queue implementation; dead-letter queues and alarms configured.
+
+**Quality and operations**
+
+- [ ] **(gate)** CI runs lint, type checks, API tests on Postgres, Playwright smoke tests and `npm run mock:check` on every merge.
+- [ ] Load test at 10× pilot volume passes latency targets.
+- [ ] Blue/green or rolling deploys with one-click rollback.
+- [ ] Error tracking (Sentry), APM or metrics (Datadog or CloudWatch), log retention set.
+- [ ] Alerts: 5xx rate, p95 latency, queue depth and age, DLQ messages, failed agent runs, SES bounce and complaint rates, RDS CPU and storage.
+- [ ] On-call rota and runbooks: restore, rotate secrets, pause sending, disable a playbook, reprocess signals.
+- [ ] Status page or incident communication template.
+
+## Security — owner: Lead engineer + DevOps
+
+- [ ] **(gate)** `JWT_SECRET` and `ENCRYPTION_KEY` are unique, generated for production, stored in **AWS Secrets Manager**, and not present in any image or repository.
+- [ ] **(gate)** `ENCRYPTION_KEY` backed up separately (losing it makes stored vendor credentials unreadable).
+- [ ] IAM task roles instead of static AWS keys; least-privilege policies reviewed.
+- [ ] Vendor webhooks verify HMAC signatures; API keys scoped and hashed.
+- [ ] Invite tokens expire and are not returned by the API in production.
+- [ ] Sessions shortened with refresh tokens; login rate limiting in a shared store.
+- [ ] WAF rules on CloudFront (rate-based, common exploits); `/api/v1/docs` restricted if not meant to be public.
+- [ ] Dependency and container image scanning in CI; no critical vulnerabilities open.
+- [ ] External penetration test completed; high findings fixed.
+- [ ] Security overview, subprocessor list (AWS, Anthropic, vendors) and DPA template ready for design partners.
+
+## Data — owner: Lead engineer + PM
+
+- [ ] **(gate)** RDS automated backups and point-in-time recovery on; **restore rehearsed** and timed.
+- [ ] **(gate)** No demo data (`seed:demo`) in production; test workspaces flagged and excluded from metrics.
+- [ ] Retention policy defined for signals, LLM prompts / outputs and inbound emails.
+- [ ] Data deletion process for a workspace (on request and at contract end).
+- [ ] Email compliance: unsubscribe handling, suppression list, CAN-SPAM footer; GDPR basis documented for any EU contacts.
+- [ ] LLM data handling reviewed: only needed fields sent; no customer data used for training; retention settings confirmed with Anthropic's terms.
+- [ ] Sending domains authenticated (SPF, DKIM, DMARC); SES out of sandbox with production sending limits.
+- [ ] Design partners' imports validated (dedup rate, enrichment match rate).
+
+## GTM and support — owner: Founder / GTM lead
+
+- [ ] **(gate)** Design partner agreements signed (scope, pricing or pilot terms, DPA, success criteria).
+- [ ] Onboarding plan per partner: kickoff, import session, playbook workshop, weekly check-ins.
+- [ ] Vendor prerequisites confirmed per partner (RB2B account, HubSpot admin access, sending domain).
+- [ ] Help centre articles: import, connecting RB2B and HubSpot, writing playbooks, approving drafts, sequences.
+- [ ] Support channel, hours and response targets (for example first response ≤ 4 business hours).
+- [ ] Escalation path from support to on-call engineer.
+- [ ] Demo environment kept separate on `mock` for prospects ([Environments](/docs/architecture/environments-and-data-modes)).
+- [ ] Pricing hypothesis and packaging ready for the "intent to pay" conversation.
+
+## Go / no-go meeting
+
+| Decision input | Owner | Status |
+|---|---|---|
+| All **(gate)** items checked | Each section owner | ☐ |
+| Open Sev-1 / Sev-2 bugs = 0 | Lead engineer | ☐ |
+| Restore rehearsal ≤ 1 hour | DevOps | ☐ |
+| At least 5 partners ready to onboard | GTM lead | ☐ |
+| Risk register reviewed ([Risks](/docs/mvp-scope/risks-and-assumptions)) | PM | ☐ |
+
+**Rule:** any unchecked gate means **no-go**. Re-run the meeting within one week.
+
+## Related
+
+- [Engineering → Deployment → Production checklist](/docs/engineering/deployment#production-checklist)
+- [Engineering → Configuration → Recommended values per environment](/docs/engineering/configuration#recommended-values-per-environment)
+- [Roadmap → Dependencies & risks → Decision gates](/docs/roadmap/dependencies-and-risks#decision-points-and-go--no-go-gates)
