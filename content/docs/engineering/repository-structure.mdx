@@ -1,0 +1,265 @@
+---
+title: Repository structure
+description: A folder-by-folder map of the SellEasy monorepo, covering the root tooling, the API, the web app and the docs.
+icon: FolderTree
+---
+
+SellEasy lives in one working directory with three apps side by side. Each app has its own `package.json`, `node_modules` and lockfile. The root holds only shared tooling. This page explains what each important folder and file is for.
+
+## Top level
+
+<Files>
+  <Folder name="sell-easy" defaultOpen>
+    <File name="package.json" />
+    <File name="package-lock.json" />
+    <File name="README.md" />
+    <File name="plan.md" />
+    <File name=".gitignore" />
+    <Folder name="scripts">
+      <File name="setup.mjs" />
+    </Folder>
+    <Folder name="backend" />
+    <Folder name="frontend" />
+    <Folder name="docs" />
+  </Folder>
+</Files>
+
+| Path | Purpose |
+|---|---|
+| `package.json` | Scripts that orchestrate both apps: `install:all`, `setup`, `dev` and `start` (both use `concurrently`), `build`, `test`, `seed:demo` and `bootstrap`. Its only dependency is `concurrently`. |
+| `scripts/setup.mjs` | One-time local setup. Creates `.env` files with generated secrets, then bootstraps or seeds the database. See [Getting started](/docs/engineering/getting-started#what-npm-run-setup-does). |
+| `plan.md` | The architecture and integration plan: API surface, env keys, delivery phases, decisions and implementation status |
+| `README.md` | Quick start and how to load real data |
+| `.gitignore` | Ignores `node_modules` and `.DS_Store` |
+
+## Backend (`backend/`)
+
+<Files>
+  <Folder name="backend" defaultOpen>
+    <File name=".env.example" />
+    <File name="package.json" />
+    <File name="tsconfig.json" />
+    <File name="tsconfig.build.json" />
+    <File name="vitest.config.ts" />
+    <Folder name="db">
+      <File name="accounts.json … users.json (git-ignored)" />
+    </Folder>
+    <Folder name="scripts">
+      <File name="bootstrap.ts" />
+      <File name="seed-demo.ts" />
+      <File name="reset.ts" />
+    </Folder>
+    <Folder name="src" defaultOpen>
+      <File name="server.ts" />
+      <File name="app.ts" />
+      <File name="config.ts" />
+      <Folder name="lib">
+        <File name="http.ts" />
+        <File name="openapi.ts" />
+        <File name="errors.ts" />
+        <File name="expand.ts" />
+        <File name="crypto.ts" />
+        <File name="ids.ts" />
+        <File name="logger.ts" />
+      </Folder>
+      <Folder name="middleware">
+        <File name="auth.ts" />
+        <File name="error.ts" />
+      </Folder>
+      <Folder name="db">
+        <File name="index.ts" />
+        <File name="repository.ts" />
+        <Folder name="json">
+          <File name="json-repository.ts" />
+        </Folder>
+        <Folder name="postgres">
+          <File name="postgres-repository.ts" />
+          <Folder name="migrations" />
+        </Folder>
+      </Folder>
+      <Folder name="domain">
+        <File name="types.ts" />
+        <File name="constants.ts" />
+      </Folder>
+      <Folder name="events">
+        <File name="bus.ts" />
+      </Folder>
+      <Folder name="providers">
+        <File name="index.ts" />
+      </Folder>
+      <Folder name="modules">
+        <Folder name="accounts" />
+        <Folder name="activities" />
+        <Folder name="admin" />
+        <Folder name="agent" />
+        <Folder name="analytics" />
+        <Folder name="auth" />
+        <Folder name="contacts" />
+        <Folder name="import" />
+        <Folder name="integrations" />
+        <Folder name="meta" />
+        <Folder name="notifications" />
+        <Folder name="organization" />
+        <Folder name="outreach" />
+        <Folder name="pipeline" />
+        <Folder name="scoring" />
+        <Folder name="search" />
+        <Folder name="signals" />
+      </Folder>
+      <Folder name="seed">
+        <File name="demo.ts" />
+        <File name="generate.ts" />
+      </Folder>
+    </Folder>
+    <Folder name="tests">
+      <File name="api.test.ts" />
+    </Folder>
+  </Folder>
+</Files>
+
+| Path | Purpose |
+|---|---|
+| `src/server.ts` | Entry point. Warns if no organization exists, starts listening on `PORT`, and shuts down cleanly on SIGINT and SIGTERM. |
+| `src/app.ts` | `createApp()`. Sets up the middleware stack (pino-http, helmet, cors, compression, JSON body limit), `/health`, the rate-limited `/api/v1` router, all 18 modules, `openapi.json` and the Swagger UI, then the 404 and error handlers. |
+| `src/config.ts` | Loads the environment with zod. The process exits with a readable list of problems if a value is invalid. Also derives `corsOrigins`, `dataDir`, `enableSimulation` and `enableAdminReset`. |
+| `src/lib/http.ts` | `createModule(tag, basePath)` and `route({...})`. Handles auth mode, role checks, zod parsing, the `{ data }` envelope, status codes and OpenAPI registration. Also exports the shared schemas: `listQuery`, `csvList`, `boolQuery`, `idParams`, `idList`, and the `parseSort` helper. |
+| `src/lib/openapi.ts` | Builds the OpenAPI 3.1 document from the route registry |
+| `src/lib/errors.ts` | `HttpError` and its helpers: `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `unprocessable`, `must` |
+| `src/lib/expand.ts` | `withAccounts` and `withContacts`, which attach `account` and `contact` summaries to list items |
+| `src/lib/crypto.ts` | AES-256-GCM `encrypt` and `decrypt`, `sha256`, `mask`, `randomSecret` |
+| `src/middleware/auth.ts` | JWT signing and verification, API-key authentication, `assertRole`, `atLeast(role)` |
+| `src/middleware/error.ts` | The error envelope. Maps body-parser failures to `invalid_json` and `payload_too_large`. |
+| `src/db/repository.ts` | The storage-agnostic `Repository<T>` interface and the `Where<T>` query language |
+| `src/db/json/json-repository.ts` | The JSON-file driver: in-memory cache, per-collection write queue, atomic temp-file-then-rename writes |
+| `src/db/postgres/` | Placeholder for the Postgres driver (it throws if selected) and an empty `migrations/` folder |
+| `src/db/index.ts` | `db`, the registry of all 19 collections, with the file name and ID prefix for each |
+| `src/domain/types.ts` | **Source of truth** for the domain types |
+| `src/domain/constants.ts` | Business constants: industries, stages, deal probabilities, the integration catalog, the default ICP and API scopes. `GET /meta` serves them. |
+| `src/events/bus.ts` | The in-memory `EventBus`, with domain events such as `signal.ingested` and `deal.stage_changed` |
+| `src/providers/index.ts` | Vendor adapter interfaces and their **mock** implementations |
+| `src/modules/<service>/routes.ts` | The HTTP contract for a service |
+| `src/modules/<service>/service.ts` | The business logic for a service. Some modules have extra files, for example `scoring/engine.ts` and `outreach/enrollment.ts`. |
+| `src/seed/` | The demo dataset generator and `clearOrgData` and `seedDemoData` |
+| `scripts/` | `bootstrap.ts`, `seed-demo.ts` and `reset.ts`, run with `tsx` |
+| `tests/api.test.ts` | End-to-end API tests using supertest against `createApp()`, with an isolated temp `DATA_DIR` |
+| `db/` | The JSON database, one `<collection>.json` array per collection. Everything except `.gitkeep` is git-ignored. |
+| `dist/` | Output of `npm run build` (git-ignored) |
+
+The module folders map to API tags like this: `organization` holds both the **Organization** routes (`/org`, `/me`, `/users`, `/api-keys`) and the auth service that `auth/routes.ts` uses. `signals/routes.ts` exports two modules, **Signals** and **Webhooks**. `outreach` serves `/sequences`, `/enrollments`, `/mailboxes`, `/inbox` and `/outreach/stats`. `pipeline` serves `/deals`.
+
+## Frontend (`frontend/`)
+
+<Files>
+  <Folder name="frontend" defaultOpen>
+    <File name=".env.example" />
+    <File name="components.json" />
+    <File name="next.config.ts" />
+    <File name="eslint.config.mjs" />
+    <File name="AGENTS.md" />
+    <Folder name="src" defaultOpen>
+      <Folder name="app" defaultOpen>
+        <File name="layout.tsx" />
+        <File name="page.tsx" />
+        <File name="globals.css" />
+        <Folder name="login">
+          <File name="page.tsx" />
+        </Folder>
+        <Folder name="(app)">
+          <File name="layout.tsx" />
+          <Folder name="dashboard" />
+          <Folder name="accounts" />
+          <Folder name="contacts" />
+          <Folder name="signals" />
+          <Folder name="scoring" />
+          <Folder name="agent" />
+          <Folder name="outreach" />
+          <Folder name="pipeline" />
+          <Folder name="analytics" />
+          <Folder name="integrations" />
+          <Folder name="settings" />
+        </Folder>
+      </Folder>
+      <Folder name="components">
+        <Folder name="ui" />
+        <Folder name="layout" />
+        <Folder name="shared" />
+        <Folder name="accounts" />
+        <Folder name="contacts" />
+        <Folder name="signals" />
+        <Folder name="agent" />
+        <Folder name="outreach" />
+        <Folder name="pipeline" />
+        <Folder name="integrations" />
+        <Folder name="settings" />
+        <File name="providers.tsx" />
+      </Folder>
+      <Folder name="lib" defaultOpen>
+        <Folder name="api" defaultOpen>
+          <File name="client.ts" />
+          <File name="query.ts" />
+          <File name="auth-store.ts" />
+          <File name="index.ts" />
+          <Folder name="hooks" />
+        </Folder>
+        <File name="types.ts" />
+        <File name="constants.ts" />
+        <File name="format.ts" />
+        <File name="utils.ts" />
+      </Folder>
+      <Folder name="hooks">
+        <File name="use-mobile.ts" />
+      </Folder>
+    </Folder>
+  </Folder>
+</Files>
+
+| Path | Purpose |
+|---|---|
+| `src/app/layout.tsx` | Root layout. Loads the Geist fonts and `globals.css` and wraps the app in `<Providers>`. |
+| `src/app/page.tsx` | Redirects to `/dashboard` or `/login` depending on whether a session exists |
+| `src/app/login/page.tsx` | Sign in, create a workspace, accept an invite |
+| `src/app/(app)/layout.tsx` | Guard for authenticated pages (redirects to `/login?next=…`), refreshes `/auth/me`, renders the sidebar and header |
+| `src/app/(app)/*/page.tsx` | Feature pages. See the [route map](/docs/engineering/frontend#route-map). |
+| `src/components/ui/` | shadcn/ui primitives. Generated by the shadcn CLI and edited only in small ways. |
+| `src/components/layout/` | `app-sidebar`, `app-header`, `command-menu` (⌘K), `notifications`, `nav.ts` |
+| `src/components/shared/` | Shared building blocks: `PageHeader`, `StatCard`, score and tier badges, status badges, avatars, `ConfirmDialog`, `EmptyState`, `QueryError`, `TableSkeleton` |
+| `src/components/<feature>/` | Components for a single feature: dialogs, sheets, tables, tabs |
+| `src/components/providers.tsx` | Sets up QueryClient, ThemeProvider, TooltipProvider, `SessionGate` and the toaster |
+| `src/lib/api/client.ts` | Fetch wrapper, `ApiError`, `errorMessage`, `downloadText` |
+| `src/lib/api/query.ts` | `makeQueryClient`, `useApiQuery`, `useApiMutation` |
+| `src/lib/api/auth-store.ts` | The persisted zustand session store |
+| `src/lib/api/hooks/*.ts` | Typed query and mutation hooks, one file per service |
+| `src/lib/api/index.ts` | Barrel file. Import everything from `@/lib/api`. |
+| `src/lib/types.ts` | API contract types, mirrored from `backend/src/domain/types.ts` |
+| `src/lib/constants.ts` | UI labels and styles, such as tier colours and status labels |
+| `src/lib/format.ts` | Formatting helpers: `currency`, `percent`, `timeAgo`, `shortDate`, `initials` |
+| `components.json` | shadcn config: `radix-nova` style, neutral base colour, lucide icons, `@/` aliases |
+| `next.config.ts` | Sets `turbopack.root` to the frontend folder. Without it, Turbopack picks up the root `package.json`. |
+| `AGENTS.md` / `CLAUDE.md` | Notes for AI coding agents, written by `next dev`. Next.js 16 has breaking changes, so check `node_modules/next/dist/docs/`. |
+
+## Docs (`docs/`)
+
+| Path | Purpose |
+|---|---|
+| `content/docs/product/` | Product documentation |
+| `content/docs/engineering/` | Engineering documentation (this section) |
+| `content/docs/**/meta.json` | Sidebar order. A folder with `"root": true` becomes a sidebar tab. |
+| `src/components/mdx.tsx` | MDX components available in every page |
+| `src/components/mermaid.tsx` | Renders ` ```mermaid ` code blocks |
+| `.source/` | Content generated by fumadocs-mdx (git-ignored) |
+
+## Git repositories
+
+<Callout type="warn" title="There are several git repositories here, not one">
+The `sell-easy/` root is **not** a git repository. Each app has its own `.git` directory:
+
+- **`backend/`** is its own repository with remote `git@github.com:adarsh-dev-hs/sell-easy-backend.git`, on branch `main`.
+- **`frontend/`** is a separate repository with its own `.git` directory. Its `origin` is currently `git@github.com:adarsh-dev-hs/sell-easy.git`, on branch `main`.
+- The root files (`package.json`, `scripts/`, `plan.md`, `README.md`) and `docs/` aren't tracked by either repository yet.
+
+Run `git` commands from inside the app you changed, and open a separate PR for each repository. A change that touches both the API and the UI needs two coordinated PRs.
+</Callout>
+
+<Callout type="info" title="Env files in git">
+`frontend/.gitignore` ignores `.env*` but re-includes `.env.example` (`!.env.example`), so only the example file is committed. The same applies to `backend/.env.example`; real `.env` files are never committed.
+</Callout>

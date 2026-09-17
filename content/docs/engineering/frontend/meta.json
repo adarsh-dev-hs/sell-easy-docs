@@ -1,0 +1,5 @@
+{
+  "title": "Frontend",
+  "icon": "Monitor",
+  "pages": ["index", "data-layer", "auth-and-routing", "ui-conventions", "adding-a-page"]
+}

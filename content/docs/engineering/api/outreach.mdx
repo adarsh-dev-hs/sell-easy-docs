@@ -1,0 +1,387 @@
+---
+title: Outreach
+description: Endpoints for sequences and their steps, enrollments, sending mailboxes, the reply inbox and aggregate outreach stats.
+icon: Send
+---
+
+The outreach module (`backend/src/modules/outreach/`) has no base path of its own. It serves `/sequences`, `/enrollments`, `/mailboxes`, `/inbox` and `/outreach/stats`.
+
+<Callout type="warn" title="Outreach is a state machine; nothing is actually sent">
+The API has no scheduler that works through sequence steps, and the email provider is a mock that only logs. Sequence `stats` (`sent`, `opened`, `replied`, `bounced`) come from the demo seed. At runtime, only two things change them: enrolling contacts adds to `enrolled`, and booking a meeting adds to `meetings`. Inbox messages also come from the seed, because the API has no inbound mail ingestion yet.
+</Callout>
+
+Unless an endpoint says otherwise, reads need **viewer** or higher and writes need **member** or higher.
+
+## Sequences
+
+### The sequence object
+
+<TypeTable
+  type={{
+    id: { type: 'string', description: 'seq_… identifier.' },
+    name: { type: 'string', description: '1–120 characters.' },
+    status: { type: '"active" | "paused" | "draft"', description: 'New sequences start as "draft".' },
+    ownerId: { type: 'string', description: 'Sequence owner. Defaults to the creator.' },
+    mailboxIds: { type: 'string[]', description: 'Sending mailboxes in rotation.' },
+    steps: { type: 'SequenceStep[]', description: '{ id, channel, dayOffset, subject?, body? }. channel is one of email, linkedin_connect, linkedin_message, call, wait.' },
+    stats: { type: 'object', description: '{ enrolled, sent, opened, replied, meetings, bounced }' },
+    settings: { type: 'SequenceSettings?', description: '{ sendDays: 0–6 (0 = Monday), startHour, endHour, timezone, stopOnReply, trackOpens }' },
+    activeEnrollments: { type: 'number', description: 'Added in list and detail responses.' },
+    ownerName: { type: 'string | null', description: 'Added in list and detail responses.' },
+  }}
+/>
+
+**Settings validation:** `sendDays` must contain 1–7 integers from 0 to 6. `startHour` is 0–23 and `endHour` is 1–24, and `endHour` must be greater than `startHour` (otherwise `fieldErrors.endHour`). `timezone` is 1–64 characters. `stopOnReply` and `trackOpens` are booleans. Every settings field is required whenever you send `settings`.
+
+### `GET /sequences`
+
+Lists sequences with `activeEnrollments` and `ownerName`. Paginated.
+
+| Query | Notes |
+|---|---|
+| `page`, `pageSize` | Standard |
+| `q` | Matches `name` |
+| `status` | CSV of `active,paused,draft` |
+| `sort` | `name`, `status`, `createdAt` or `updatedAt`. Default `createdAt:desc`. |
+
+```json title="200 response (trimmed)"
+{
+  "data": [
+    {
+      "id": "seq_5f8db25",
+      "name": "Event follow-up (draft)",
+      "status": "draft",
+      "ownerId": "usr_XPzRrcXh",
+      "mailboxIds": [],
+      "steps": [{ "id": "s1", "channel": "email", "dayOffset": 0, "subject": "Great meeting you at SaaStr", "body": "Hi {{first_name}}, great chatting at the booth!" }],
+      "stats": { "enrolled": 0, "sent": 0, "opened": 0, "replied": 0, "meetings": 0, "bounced": 0 },
+      "activeEnrollments": 0,
+      "ownerName": "Sam Rivera"
+    }
+  ],
+  "meta": { "total": 5, "page": 1, "pageSize": 1 }
+}
+```
+
+### `POST /sequences`
+
+Creates a sequence. It starts with **one empty email step** on day 0. **Status:** `201`.
+
+| Body | Type | Notes |
+|---|---|---|
+| `name` | string, 1–120 | required |
+| `ownerId` | string | Defaults to the caller. Must be a user in the org (`400 "Owner not found in this organization"`). |
+| `mailboxIds` | string[], at most 50 | Duplicates are removed. Every ID must exist (`400 "One or more mailboxes were not found"`). |
+| `status` | `active` \| `paused` \| `draft` | Default `draft` |
+| `settings` | SequenceSettings | Optional |
+
+Returns the sequence detail, including `activeEnrollments` and `ownerName`.
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/sequences \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"name":"Series B follow-up","settings":{"sendDays":[0,1,2,3,4],"startHour":9,"endHour":17,"timezone":"America/New_York","stopOnReply":true,"trackOpens":true}}'
+```
+
+### `GET /sequences/:id`
+
+Returns one sequence with `activeEnrollments` and `ownerName`. **Errors:** `404 "Sequence not found"`.
+
+### `PATCH /sequences/:id`
+
+Updates any of `name`, `ownerId`, `mailboxIds`, `status` or `settings`, and returns the detail. It uses the same validation as create.
+
+**Errors:** `400 "Cannot activate a sequence with no steps"`.
+
+### `DELETE /sequences/:id`
+
+Deletes a sequence and **all its enrollments**. It also removes the `sequenceId` from any playbooks and drafts that reference the sequence. **Status:** `204`.
+
+### `POST /sequences/:id/duplicate`
+
+Copies a sequence as a `draft` named `"<name> (copy)"`. The copy gets new step IDs and zeroed stats. **Status:** `201`. Returns the new sequence detail.
+
+## Steps
+
+### `POST /sequences/:id/steps`
+
+Appends a step. **Status:** `201`. Returns the new step.
+
+| Body | Type | Notes |
+|---|---|---|
+| `channel` | `email` \| `linkedin_connect` \| `linkedin_message` \| `call` \| `wait` | required |
+| `dayOffset` | integer, 0–365 | Defaults to the last step's `dayOffset + 2`, or 0 if the sequence has no steps |
+| `subject` | string, at most 300 | Email steps default to `""` |
+| `body` | string, at most 20000 | Every channel except `wait` defaults to `""` |
+
+### `PATCH /sequences/:id/steps/:stepId`
+
+Updates `channel`, `dayOffset`, `subject` or `body`, and returns the updated step. **Errors:** `404 "Step not found"`.
+
+### `DELETE /sequences/:id/steps/:stepId`
+
+Removes a step. **Status:** `204`. **Errors:** `404`; `400 "An active sequence must keep at least one step"`.
+
+### `POST /sequences/:id/steps/:stepId/move`
+
+Swaps a step with its neighbour. **Status:** `200`. Returns the **reordered steps array**.
+
+| Body | Type |
+|---|---|
+| `direction` | `up` \| `down` |
+
+**Errors:** `400 "Step is already at the top"` (or `"bottom"`).
+
+## Enrollments
+
+### `GET /sequences/:id/enrollments`
+
+Lists the enrollments in a sequence. Each enrollment includes a `contact` summary (`id`, `firstName`, `lastName`, `title`, `email`) and an `account` summary (`id`, `name`). Paginated.
+
+| Query | Notes |
+|---|---|
+| `status` | CSV of `active,paused,completed,replied,bounced,unsubscribed` |
+| `q` | Matches the contact's first name, last name, email or title |
+| `sort` | `enrolledAt`, `status`, `currentStep` or `nextStepAt`. Default `enrolledAt:desc`. |
+
+```json title="200 response (trimmed)"
+{
+  "data": [
+    {
+      "id": "enr_93f8db25",
+      "sequenceId": "seq_1f8db25",
+      "contactId": "con_184f8db25",
+      "currentStep": 0,
+      "status": "replied",
+      "enrolledAt": "2026-09-15T13:12:46.870Z",
+      "contact": { "id": "con_184f8db25", "firstName": "Layla", "lastName": "Walker", "title": "Account Executive", "email": "layla.walker@redwoodpay.com" },
+      "account": { "id": "acc_54f8db25", "name": "Redwood Pay" }
+    }
+  ],
+  "meta": { "total": 28, "page": 1, "pageSize": 1 }
+}
+```
+
+### `GET /sequences/:id/performance`
+
+Returns the funnel, conversion rates and a per-step breakdown.
+
+```json title="200 response (trimmed)"
+{
+  "data": {
+    "sequenceId": "seq_1f8db25",
+    "stats": { "enrolled": 214, "sent": 842, "opened": 512, "replied": 61, "meetings": 19, "bounced": 9 },
+    "funnel": [
+      { "stage": "enrolled", "label": "Enrolled", "value": 214 },
+      { "stage": "sent", "label": "Sent", "value": 842 }
+    ],
+    "rates": { "openRate": 60.8, "replyRate": 7.2, "meetingRate": 31.1, "bounceRate": 1.1 },
+    "steps": [
+      { "stepId": "s1", "index": 0, "channel": "email", "dayOffset": 0, "subject": "Quick question about {{company}}'s outbound", "reached": 214, "primary": 376, "primaryLabel": "sent", "secondary": 248, "secondaryLabel": "opened", "replied": 31 },
+      { "stepId": "s2", "index": 1, "channel": "linkedin_connect", "dayOffset": 1, "subject": null, "reached": 184, "primary": 169, "primaryLabel": "requests", "secondary": 70, "secondaryLabel": "accepted", "replied": null }
+    ]
+  }
+}
+```
+
+- `openRate`, `replyRate` and `bounceRate` are divided by `sent`. `meetingRate` is divided by `replied`.
+
+<Callout type="info" title="The per-step numbers are estimates">
+The API doesn't record per-step events. `steps[]` is built from the sequence totals using fixed decay factors. The email rows are apportioned so that they add up exactly to `sent`, `opened` and `replied`. The LinkedIn and call rows are ratios of `reached`.
+</Callout>
+
+### `POST /sequences/:id/enroll`
+
+Enrolls contacts. **Status:** `200`. Body: `{ "contactIds": string[] }`, with 1–1000 IDs.
+
+The response is the standard enrollment result. See [enrollment rules](/docs/engineering/api/accounts-and-contacts#enrollment-rules).
+
+### `GET /sequences/:id/enrollable`
+
+Returns up to 100 contacts that are **not actively enrolled** in the sequence, sorted by name. Each contact says whether it would be skipped. This powers the enroll dialog.
+
+| Query | Notes |
+|---|---|
+| `q` | Matches the contact's first name, last name, email or title |
+
+```json title="200 response (trimmed)"
+{
+  "data": {
+    "items": [
+      { "id": "con_27f8db25", "firstName": "Aiden", "lastName": "Ali", "title": "Demand Gen Manager", "email": "aiden.ali@polarislabs.com", "emailStatus": "unverified", "status": "new", "accountId": "acc_8f8db25", "accountName": "Polaris Labs", "willSkip": false, "skipReason": null }
+    ],
+    "total": 182
+  }
+}
+```
+
+`skipReason` is `unsubscribed`, `bounced`, `invalid email` or `null`. The response is `{ items, total }` inside `data`, not the usual `{ data, meta }` pagination.
+
+### `POST /enrollments/bulk-status`
+
+Sets the status of many enrollments. **Status:** `200`.
+
+| Body | Type |
+|---|---|
+| `ids` | string[], 1–1000 |
+| `status` | `active` \| `paused` \| `completed` |
+
+Returns `{ "updated": n }`. The contacts' statuses and the sequence stats aren't changed.
+
+### `POST /enrollments/bulk-delete`
+
+Removes enrollments. Body: `{ "ids": string[] }`. **Status:** `200`. Returns `{ "removed": n }`.
+
+## Mailboxes
+
+### The mailbox object
+
+| Field | Type | Notes |
+|---|---|---|
+| `email` | string | Stored in lowercase and unique within the org |
+| `provider` | `SES` \| `Google` \| `Microsoft` \| `Mailpool` | |
+| `dailyLimit` | integer, 1–2000 | |
+| `sentToday` | number | Starts at 0 |
+| `warmupEnabled` | boolean | `true` on create |
+| `healthScore` | number | 70 on create |
+| `status` | `healthy` \| `warning` \| `paused` | `warning` on create |
+| `usedBy` | number | The number of sequences that use this mailbox. Added in every mailbox response. |
+
+### `GET /mailboxes`
+
+Lists all mailboxes, sorted by email. Each one includes `usedBy`. Plain array.
+
+```json title="200 response (trimmed)"
+{ "data": [{ "id": "mb_2f8db25", "email": "casey@try-acmegrowth.com", "provider": "Mailpool", "dailyLimit": 50, "sentToday": 44, "warmupEnabled": true, "healthScore": 91, "status": "healthy", "usedBy": 2 }] }
+```
+
+### `POST /mailboxes`
+
+Connects a mailbox. **Role:** admin or higher. **Status:** `201`.
+
+| Body | Type |
+|---|---|
+| `email` | email, at most 254 characters |
+| `provider` | `SES` \| `Google` \| `Microsoft` \| `Mailpool` |
+| `dailyLimit` | integer, 1–2000 |
+
+**Errors:** `409 "Mailbox <email> is already connected"`.
+
+The API doesn't connect to or authenticate the mailbox with the provider. It only stores the record.
+
+### `PATCH /mailboxes/:id`
+
+Updates `dailyLimit`, `warmupEnabled` or `status`. **Role:** member or higher. **Errors:** `404 "Mailbox not found"`.
+
+### `DELETE /mailboxes/:id`
+
+Removes a mailbox and takes it out of every sequence's `mailboxIds`. **Role:** admin or higher. **Status:** `204`.
+
+## Inbox
+
+### The inbox message object
+
+| Field | Type | Notes |
+|---|---|---|
+| `contactId`, `sequenceId?` | string | |
+| `channel` | `email` \| `linkedin` | |
+| `subject`, `snippet`, `body` | string | |
+| `receivedAt` | string | |
+| `sentiment` | `positive` \| `neutral` \| `negative` \| `ooo` | |
+| `read`, `archived` | boolean | |
+| `thread` | `{ from: "us" \| "them", body, at }[]` | The conversation |
+| `contact` | `{ id, firstName, lastName, title, accountId }` \| null | Added in responses |
+| `account` | `{ id, name }` \| null | Added in responses |
+| `sequenceName` | string \| null | Added in responses |
+
+### `GET /inbox`
+
+Lists replies, newest first (by `receivedAt`). Paginated. `pageSize` can be 1–200 and defaults to **50**.
+
+| Query | Notes |
+|---|---|
+| `q` | Matches `subject`, `snippet` or `body`, or the contact's first name, last name or email |
+| `sentiment` | CSV of `positive,neutral,negative,ooo` |
+| `archived` | Archived messages are **hidden** unless you pass `archived=true`, which **includes** them alongside the rest |
+| `unread` | `true` returns only unread messages; `false` returns only read ones |
+
+### `GET /inbox/counts`
+
+```json title="200 response"
+{ "data": { "unread": 5, "all": 16, "positive": 8, "neutral": 3, "negative": 3, "ooo": 2 } }
+```
+
+`unread` always counts unread messages that aren't archived. `all` and the sentiment counts include archived messages only when you pass `?archived=true`.
+
+### `GET /inbox/:id`
+
+Returns one message with its thread and the added fields. **Errors:** `404 "Message not found"`.
+
+### `PATCH /inbox/:id`
+
+Sets `read`, `archived` or `sentiment`. Returns the message detail.
+
+### `POST /inbox/:id/reply`
+
+Replies to a message. **Status:** `201`. Body: `{ "body": string }`, trimmed and 1–20000 characters.
+
+**Side effects:**
+
+- For email messages whose contact has an email address, the API sends the reply through the email provider (**mocked**). The subject gets a `Re: ` prefix unless it already has one.
+- Appends `{ from: "us", body, at }` to the thread and marks the message as read.
+- Updates the contact's `lastContactedAt` and logs an `email` activity.
+
+Returns the message detail.
+
+### `POST /inbox/:id/suggest-reply`
+
+Asks the LLM provider for a suggested reply. **Status:** `200`.
+
+```json title="200 response"
+{ "data": { "body": "Hi Sophia,\n\nUnderstood — I've removed you from our outreach. Apologies for the interruption.\n\nBest,\nJordan" } }
+```
+
+The mock picks a template based on the message's `sentiment`. For `positive` messages, the template includes a calendar link.
+
+### `POST /inbox/:id/book-meeting`
+
+Books a meeting from a reply. **Status:** `200`.
+
+**Side effects:**
+
+1. Sets the contact's `status` to `meeting`. The contact's **active** enrollments become `replied`.
+2. Adds 1 to the sequence's `stats.meetings`, if the message belongs to a sequence.
+3. Marks the message `positive` and read. Logs a `meeting` activity.
+4. **Deal handling:**
+   - If the account already has an open deal, a deal in `discovery` moves to `qualified`. A deal in any other stage is left as it is.
+   - Otherwise, the API creates a `"<Account> – Discovery"` deal: $24,000, closing in 40 days, source `"Sequence reply"`.
+
+```json title="200 response (shape)"
+{ "data": { "deal": { "id": "deal_…", "stage": "discovery", "...": "..." }, "created": true } }
+```
+
+**Errors:** `400 "The contact for this message no longer exists"`.
+
+## Stats
+
+### `GET /outreach/stats`
+
+Returns totals across all sequences.
+
+```json title="200 response"
+{
+  "data": {
+    "enrolled": 605,
+    "sent": 1620,
+    "opened": 886,
+    "replied": 103,
+    "meetings": 34,
+    "bounced": 33,
+    "openRate": 54.7,
+    "replyRate": 6.4,
+    "activeSequences": 3,
+    "totalSequences": 5,
+    "activeEnrollments": 44
+  }
+}
+```

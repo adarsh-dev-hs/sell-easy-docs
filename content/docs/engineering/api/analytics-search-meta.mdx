@@ -1,0 +1,226 @@
+---
+title: Analytics, search and meta
+description: Endpoints for dashboard and analytics aggregates, the CSV deal export, global search, the business constants and feature flags served to clients, and the health check.
+icon: BarChart3
+---
+
+This page covers four small modules: **Analytics** (`/analytics`), **Search** (`/search`), **Meta** (`/meta`), and the health check defined in `app.ts`. All of them are read-only and open to **viewer** or higher, except `/health`, which needs no auth.
+
+The analytics endpoints compute everything on each request from the JSON collections. Nothing is precomputed or cached, and there's no warehouse behind them yet.
+
+## Analytics
+
+### `GET /analytics/dashboard`
+
+Returns everything the dashboard page shows, in one call. It takes no parameters.
+
+```json title="200 response (trimmed)"
+{
+  "data": {
+    "stats": {
+      "pipeline": 1518000,
+      "weighted": 633600,
+      "won": 204000,
+      "hotAccounts": 14,
+      "signals7d": 83,
+      "positiveReplies": 8,
+      "pendingDrafts": 5,
+      "openDeals": 25
+    },
+    "activity30d": [{ "day": "2026-08-19", "signals": 5, "agentActions": 0 }],
+    "pipelineByStage": [{ "stage": "discovery", "label": "Discovery", "amount": 312000, "count": 5 }],
+    "hotAccounts": [{ "id": "acc_1f8db25", "name": "Ionic Logistics", "industry": "Logistics", "employees": 805, "tier": "A", "intentScore": 100, "score": 70 }],
+    "latestSignals": [{ "id": "sig_119f8db25", "type": "funding", "title": "Raised Series B", "accountName": "Tidal Logistics", "...": "..." }],
+    "latestRuns": [{ "id": "run_1f8db25", "accountId": "acc_4f8db25", "accountName": "Tidal Logistics", "status": "completed", "trigger": "Apollo.io: Raised Series B", "startedAt": "2026-09-17T10:12:46.870Z" }]
+  }
+}
+```
+
+| Field | How it's computed |
+|---|---|
+| `stats.pipeline` / `weighted` | Sum of `amount`, or of `amount × probability / 100`, over open deals |
+| `stats.won` | Sum of `amount` over **all-time** `closed_won` deals |
+| `stats.hotAccounts` | Tier A accounts, not counting flagged duplicates |
+| `stats.signals7d` | Signals whose `occurredAt` is within the last 7 days |
+| `stats.positiveReplies` | Inbox messages with `positive` sentiment, archived ones included |
+| `stats.pendingDrafts` | Drafts with `status: "pending"` |
+| `activity30d` | 30 rows, one per **UTC** day. Counts signals, and agent runs that weren't `skipped`. |
+| `pipelineByStage` | Open stages only (5 rows) |
+| `hotAccounts` | The 6 non-duplicate accounts with the highest `intentScore` |
+| `latestSignals` / `latestRuns` | The 6 newest of each, with `accountName` added |
+
+### `GET /analytics/overview`
+
+Returns the analytics page for a date range.
+
+| Query | Type | Default |
+|---|---|---|
+| `days` | `30` \| `90` \| `180` | `90` |
+
+Range rules:
+
+- Deals count toward the range by `createdAt`, except won deals, which count by `closeDate`.
+- Accounts count by `createdAt`, and signals by `occurredAt`.
+- **Sequence stats are all-time**, whatever the range.
+
+```json title="200 response (trimmed, days=30)"
+{
+  "data": {
+    "range": { "days": 30, "from": "2026-08-18T13:34:32.616Z", "to": "2026-09-17T13:34:32.616Z" },
+    "stats": {
+      "pipelineCreated": 822000,
+      "dealsCreated": 11,
+      "revenueWon": 168000,
+      "dealsWon": 3,
+      "replyRate": 6.358,
+      "replies": 103,
+      "meetings": 34,
+      "agentPipeline": 636000,
+      "agentPct": 77.37,
+      "signals": 203
+    },
+    "pipelineByWeek": [{ "week": "2026-08-16", "agent": 120000, "sequence": 0, "other": 48000 }],
+    "attribution": [{ "type": "tech_install", "label": "Tech install", "amount": 378000, "deals": 4 }],
+    "funnel": [{ "step": "Accounts", "count": 12, "conversion": 100 }],
+    "tiers": [{ "tier": "A", "accounts": 14, "deals": 3, "closed": 0, "winRate": 0, "avgDeal": 0, "pipeline": 186000, "won": 0 }],
+    "sequences": [{ "id": "seq_3f8db25", "name": "Champion job change", "status": "active", "stats": { "...": "..." }, "openRate": 80.49, "replyRate": 26.83, "meetingRate": 45.45 }],
+    "reps": [{ "user": { "id": "usr_0jYhZl7P", "name": "Taylor Brooks", "role": "member", "...": "..." }, "accountsOwned": 18, "openPipeline": 378000, "wonAmount": 144000, "dealsWon": 2 }],
+    "sourceMix": [{ "source": "Linkup", "count": 46 }]
+  }
+}
+```
+
+| Section | Definition |
+|---|---|
+| `stats.agentPipeline` / `agentPct` | Pipeline from in-range deals whose `source` starts with `"Agent"`, and its share of `pipelineCreated` |
+| `stats.replyRate` | Replied ÷ sent across all sequences. The value isn't rounded. |
+| `pipelineByWeek` | Weeks start on Sunday (UTC). Each week is split into `agent` (source starts with "Agent"), `sequence` (source is "Sequence reply") and `other`. |
+| `attribution` | For each signal type: the in-range deals whose account had a signal of that type **before** the deal was created. A deal can count toward several types. Sorted by amount. |
+| `funnel` | For accounts created in the range: **Accounts**, then **Engaged** (stage engaged, opportunity or customer, or has any deal), then **Opportunities** (has a deal), then **Won** (has a won deal). `conversion` is relative to the previous step. |
+| `tiers` | For each tier, based on the accounts' current tier: in-range deals, closed count, win rate, average won deal, pipeline and won amount |
+| `sequences` | Every sequence, with rates, sorted by `replyRate` |
+| `reps` | Every non-viewer user, sorted by `wonAmount` and then `openPipeline`. `openPipeline` is all-time. |
+| `sourceMix` | The top 4 signal sources in the range, plus `Other` |
+
+Percentages in this response aren't rounded. The client formats them.
+
+### `GET /analytics/deals.csv`
+
+Downloads the deals **created** within the range as CSV. It takes the same `days` parameter as the overview.
+
+- **Response:** `200 text/csv`
+- **Header:** `Content-Disposition: attachment; filename="selleasy-deals-<days>d-<yyyy-mm-dd>.csv"`
+
+Columns:
+
+```text
+Deal ID,Deal,Account,Tier,Stage,Amount,Probability,Weighted,Close date,Owner,Source,CRM ID,Synced,Created,Updated
+```
+
+The dates are `yyyy-mm-dd`. `Synced` is `yes` or `no`. Values that contain commas, quotes or newlines are quoted.
+
+```bash
+curl -s "http://localhost:4000/api/v1/analytics/deals.csv?days=90" \
+  -H "Authorization: Bearer $TOKEN" -o deals.csv
+```
+
+The frontend fetches the file with `api.text()` and saves it with `downloadText()`.
+
+## Search
+
+### `GET /search`
+
+Searches accounts, contacts, deals and sequences at once. The ⌘K command menu uses it.
+
+| Query | Type | Default |
+|---|---|---|
+| `q` | string, at most 200 characters | `""` |
+| `limit` | integer, 1–25 | `8`. This is the limit **for each entity type**. |
+
+**Matching** is a case-insensitive "contains" match:
+
+| Entity | Fields searched |
+|---|---|
+| Accounts | `name`, `domain` |
+| Contacts | `firstName`, `lastName`, `email`, `title`. If `q` contains a space, the first word must match `firstName` and the rest must match `lastName`, so "Jane Doe" finds Jane Doe. |
+| Deals | `name` |
+| Sequences | `name` |
+
+Results are sorted by most recently updated. **An empty `q` returns the most recently updated items** of each type.
+
+```bash
+curl -s "http://localhost:4000/api/v1/search?q=pol&limit=3" -H "Authorization: Bearer $TOKEN"
+```
+
+```json title="200 response"
+{
+  "data": {
+    "accounts": [
+      { "id": "acc_64f8db25", "name": "Polaris AI", "domain": "polarisai.com" },
+      { "id": "acc_8f8db25", "name": "Polaris Labs", "domain": "polarislabs.com" }
+    ],
+    "contacts": [
+      { "id": "con_219f8db25", "name": "Arjun Schmidt", "title": "Demand Gen Manager", "email": "arjun.schmidt@polarisai.com", "accountId": "acc_64f8db25" }
+    ],
+    "deals": [{ "id": "deal_14f8db25", "name": "Polaris AI – Pilot", "accountId": "acc_64f8db25" }],
+    "sequences": []
+  }
+}
+```
+
+Contacts match here because their email contains "pol".
+
+## Meta
+
+### `GET /meta`
+
+Returns the business constants and feature flags the client needs. The frontend caches the response for the whole session (`staleTime: Infinity`).
+
+```json title="200 response (trimmed)"
+{
+  "data": {
+    "industries": ["SaaS", "Fintech", "Healthcare", "E-commerce", "Cybersecurity", "Logistics", "Manufacturing", "EdTech", "Media", "Real Estate"],
+    "countries": ["United States", "United Kingdom", "Germany", "Canada", "India", "Australia", "France", "Netherlands"],
+    "technologies": ["Salesforce", "HubSpot", "Snowflake", "..."],
+    "fundingStages": ["Bootstrapped", "Seed", "Series A", "Series B", "Series C", "Series D+", "Public"],
+    "signalLabels": { "intent_topic": "Intent topic", "website_visit": "Website visit", "...": "..." },
+    "signalSources": { "intent_topic": ["Bombora"], "website_visit": ["RB2B"], "hiring": ["Apify", "Linkup"], "...": "..." },
+    "stageLabels": { "new": "New", "researching": "Researching", "...": "..." },
+    "dealStages": [{ "id": "discovery", "label": "Discovery", "probability": 10 }, "..."],
+    "actionLabels": { "rescore": "Re-score account", "route_owner": "Route to owner", "...": "..." },
+    "stepChannelLabels": { "email": "Email", "linkedin_connect": "LinkedIn connect", "...": "..." },
+    "apiScopes": ["accounts:read", "accounts:write", "signals:write", "outreach:read", "outreach:write", "pipeline:read", "pipeline:write"],
+    "integrationCategories": ["enrichment", "contacts", "intent", "scraping", "email", "linkedin", "calls", "crm", "llm"],
+    "planSeats": { "starter": 3, "growth": 10, "enterprise": 50 },
+    "features": { "simulation": true, "adminReset": true }
+  }
+}
+```
+
+| Field | Source |
+|---|---|
+| `industries`, `countries`, `technologies`, `fundingStages`, labels, `dealStages`, `apiScopes` | `backend/src/domain/constants.ts` |
+| `integrationCategories` | The distinct categories in the catalog, in catalog order |
+| `planSeats` | `PLAN_SEATS` in `organization/service.ts` |
+| `features.simulation` | `ENABLE_SIMULATION` |
+| `features.adminReset` | `ENABLE_ADMIN_RESET`, and not production |
+
+<Callout type="info" title="Use the API's constants for business values">
+Use `GET /meta` for anything that affects business logic, such as deal stage probabilities, valid industries or API scopes. `frontend/src/lib/constants.ts` also has copies of some labels, but only for display.
+</Callout>
+
+## Health
+
+### `GET /health`
+
+The liveness check. It lives **outside** the `/api/v1` prefix, needs no auth, isn't rate-limited, and isn't written to the request log.
+
+```bash
+curl -s http://localhost:4000/health
+```
+
+```json title="200 response"
+{ "status": "ok", "env": "development", "db": "json", "uptime": 948 }
+```
+
+`uptime` is in seconds. Unlike the other endpoints, this response isn't wrapped in `{ data }`. The endpoint doesn't check the data directory or any dependency; a `200` only means the process is serving HTTP.

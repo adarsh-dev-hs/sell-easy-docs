@@ -1,0 +1,184 @@
+---
+title: Metrics
+description: The north-star and supporting KPIs, exact definitions of every metric shown in SellEasy, and suggested success metrics for the product.
+icon: Activity
+---
+
+This page collects every number SellEasy shows, with its exact calculation from the API, and proposes the metrics the business should use to judge whether the product is working. Metrics marked *(proposed)* are **not** computed by the product today.
+
+## North-star metric
+
+<Callout type="success" title="Agent-influenced pipeline created per week">
+The amount of new pipeline created on accounts where the agent acted, meaning a matched playbook run *before* the deal was created, per week.
+</Callout>
+
+**Why this metric:** it measures SellEasy's core promise, turning signals into pipeline through automation. It reflects signal coverage, scoring quality, playbook design and rep follow-through all at once.
+
+**What the product can show today:** the closest built-in measures are **Agent-sourced pipeline** (deals the agent created directly) and the **Agent-sourced** series in the weekly *Pipeline created* chart. The broader "influenced" version, which also counts deals created by humans *after* an agent run, is *(proposed)*. It would join agent runs to deals on the account and compare their dates.
+
+## Supporting KPIs
+
+| Layer | KPI | Where it appears |
+|---|---|---|
+| Coverage | Signals ingested (24h / 7d / range), unprocessed backlog, source mix | Signals, Analytics |
+| Prioritisation | Tier A accounts, tier distribution, tier win rate | Dashboard, ICP preview, Analytics |
+| Automation | Agent runs, actions taken, success rate, drafts awaiting approval | Agent, Dashboard |
+| Engagement | Reply rate, open rate, meetings booked, meeting rate | Outreach, Analytics |
+| Conversion | Pipeline created, agent-sourced %, funnel conversion, win rate | Analytics, Pipeline |
+| Outcome | Revenue won, won this quarter, weighted pipeline | Pipeline, Analytics, Dashboard |
+
+## Metric definitions (as built)
+
+### Pipeline
+
+| Metric | Definition | Scope |
+|---|---|---|
+| **Open pipeline** | Σ `amount` of deals not in Closed won or Closed lost | Dashboard: all deals. Pipeline page: current search and owner filter. |
+| **Weighted pipeline** | Σ (`amount` × `probability` ÷ 100) over open deals. Rounded on the Pipeline page. | Same as above |
+| **Open deals** | Number of open deals | Same as above |
+| **Closed won (dashboard)** | Σ amount of Closed won deals, all-time | All deals |
+| **Won this quarter** | Σ amount of Closed won deals with `closeDate` ≥ the start of the current calendar quarter | Pipeline filter |
+| **Win rate** | won ÷ (won + lost) × 100, one decimal. 0 if nothing is closed. | Pipeline filter |
+| **Avg deal size** | Σ amount ÷ number of deals (open **and** closed) | Pipeline filter |
+| **Unsynced deals** | Deals with no `syncedAt` | Pipeline filter |
+| **Pipeline by stage** | Σ amount and count per open stage | Dashboard |
+| **Pipeline created** | Σ amount of deals with `createdAt` in range, any stage | Analytics range |
+| **Revenue won** | Σ amount of Closed won deals with `closeDate` in range | Analytics range |
+| **Agent-sourced pipeline** | Σ amount of in-range deals whose `source` starts with "Agent" | Analytics range |
+| **Agent-sourced %** | Agent-sourced pipeline ÷ pipeline created × 100 (0 if nothing was created) | Analytics range |
+| **Stage probability** | Discovery 10 · Qualified 25 · Demo 40 · Proposal 60 · Negotiation 80 · Won 100 · Lost 0 | Per deal |
+
+### Engagement (sequences)
+
+All sequence metrics come from each sequence's stored lifetime `stats`.
+
+| Metric | Definition |
+|---|---|
+| **Enrolled** | Σ `stats.enrolled`. Goes up by the number of contacts enrolled each time. |
+| **Active enrollments** | Enrollments with status *active* right now |
+| **Emails sent** | Σ `stats.sent` |
+| **Open rate** | opened ÷ sent × 100 (0 if nothing was sent) |
+| **Reply rate** | replied ÷ sent × 100 |
+| **Meeting rate** | meetings ÷ replied × 100 |
+| **Bounce rate** | bounced ÷ sent × 100 |
+| **Meetings booked** | Σ `stats.meetings`. Goes up by 1 on each **Book meeting** for a message linked to the sequence. |
+| **Positive replies** (dashboard) | Inbox messages with sentiment *positive*, including archived |
+| **Unread** (sidebar) | Inbox messages that are unread and not archived |
+
+<Callout type="warn">Sent, opened, replied and bounced aren't updated by the product yet, because there is no delivery or tracking pipeline. Only the demo data has values for them. Per-step numbers on the sequence Performance tab are modelled estimates. See [Outreach](/docs/product/features/outreach#performance).</Callout>
+
+### Signals
+
+| Metric | Definition |
+|---|---|
+| **Signals (24h / 7d)** | Signals with `occurredAt` within the last 1 or 7 days (rolling) |
+| **Signals (7d)** on the dashboard | Signals with `occurredAt` in the last 7 × 24 hours |
+| **Total** | All signals ever |
+| **Unprocessed** | `processed = false` |
+| **Top source** | The source with the most signals, all-time |
+| **Signals by type** | Count per type, last 30 days |
+| **Source share** | Count per source ÷ total, all-time |
+| **Source mix** (analytics) | In-range signals by source: top 4 plus "Other" |
+| **Signal activity** (dashboard) | Signals per UTC day, last 30 days |
+
+### Agent
+
+| Metric | Definition |
+|---|---|
+| **Runs today** | Runs with `startedAt` in the last 24 hours |
+| **Runs (7d)** | Runs in the last 7 days |
+| **Actions taken** | Across **all** runs: steps with status *done*, excluding the *evaluate* step. The always-present *rescore* step counts. |
+| **Awaiting approval** | Drafts with status *pending* |
+| **Success rate** | completed ÷ (completed + failed) × 100, one decimal. 100 when both are 0. Skipped and awaiting runs are excluded. |
+| **Runs by status** | Counts of completed, awaiting approval, failed and skipped |
+| **Agent actions** (dashboard chart) | Runs per UTC day, excluding *skipped* |
+| **Playbook runs** | How many times a playbook matched, counted per playbook |
+
+### Scoring
+
+| Metric | Definition |
+|---|---|
+| **Fit / Intent / Score / Tier** | See [Core concepts → Scoring](/docs/product/core-concepts#scoring) |
+| **Tier A accounts** | Non-duplicate accounts in Tier A |
+| **Hottest accounts** | Non-duplicates ranked by intent score (top 6) |
+| **Preview: tier changes** | Accounts whose tier differs between the saved and draft ICP, split into **promoted** (better tier) and **demoted** |
+| **Preview: avg score** | Mean draft score, and its change from the mean current score |
+| **ICP save: changed** | Accounts whose score **or** tier changed on save |
+
+### Funnel & tiers (analytics)
+
+| Metric | Definition |
+|---|---|
+| **Funnel: Accounts** | Non-duplicate accounts created in range |
+| **Funnel: Engaged** | Of those, accounts in stage engaged, opportunity or customer, or with any deal |
+| **Funnel: Opportunities** | Of those, accounts with any deal |
+| **Funnel: Won** | Of those, accounts with a Closed won deal |
+| **Step conversion** | Step count ÷ previous step count × 100 |
+| **Tier win rate** | won ÷ (won + lost) among in-range deals on accounts currently in the tier |
+| **Tier avg deal** | Won amount ÷ number of won deals for the tier |
+| **Attribution (per signal type)** | Σ amount and count of in-range deals whose account had at least one signal of that type **before** the deal was created. This is multi-touch, so the types can add up to more than 100%. |
+| **Rep: open pipeline / won / deals won / accounts** | See [Analytics → Rep leaderboard](/docs/product/features/analytics#rep-leaderboard) |
+
+### Data quality & operations
+
+| Metric | Definition |
+|---|---|
+| **Duplicates** | Accounts with `duplicateOf` set |
+| **Unassigned** | Accounts with no owner (including flagged duplicates) |
+| **Email status mix** | Contacts by verified, unverified, invalid or missing (use the Contacts filter) |
+| **Integrations connected / errors** | Count of connected integrations. Count of integrations in *error* status. |
+| **Credits used / tokens used** | Σ usage of connected integrations, in credits or in k tokens |
+| **Mailbox capacity / avg health / alerts** | Σ daily limit of mailboxes that aren't paused · mean health score · number of alert conditions |
+| **Seats used** | All users, including pending invites |
+
+## Suggested product success metrics *(proposed)*
+
+These metrics aren't built into the product. They are recommended for product analytics (for example with an event pipeline or warehouse) to judge whether SellEasy delivers value.
+
+### Activation
+
+| Metric | Target signal |
+|---|---|
+| Time from sign-up to first import | Setup friction |
+| % of workspaces with ≥ 1 connected intent vendor or active webhook key in week 1 | Real data flowing |
+| % of workspaces with ≥ 1 enabled playbook and ≥ 1 active sequence | Automation configured |
+| Time from first signal to first approved draft | Time to "aha" |
+
+### Engagement & adoption
+
+| Metric | Target signal |
+|---|---|
+| Weekly active users ÷ seats | Seat utilisation |
+| % of pending drafts reviewed within 24 h | Healthy approval loop |
+| **Draft approval rate** = sent ÷ (sent + rejected) | Draft quality |
+| **Edit rate** = drafts approved with edits ÷ approved | How much reps trust the LLM |
+| Regenerations per approved draft | Draft quality |
+| ICP saves per month, and preview sessions before each save | RevOps engagement with scoring |
+| % of runs *skipped* | Playbook coverage (too many skipped runs suggests the playbooks are too narrow) |
+| Autopilot-on share of workspaces | Trust in automation |
+
+### Outcomes
+
+| Metric | Target signal |
+|---|---|
+| **Agent-influenced pipeline per week** (north star) | Core value |
+| Tier A vs Tier D win rate and deal size | Scoring validity (A should clearly beat D) |
+| Median time from signal to first touch | Speed to lead |
+| Meetings booked per 100 high-intent signals | Signal-to-meeting efficiency |
+| Pipeline created per rep-hour (with time tracking) | Rep productivity |
+| Duplicate rate after import, and merge backlog | Data hygiene |
+
+### Guardrails
+
+| Metric | Why |
+|---|---|
+| Bounce rate below 2% per mailbox | Deliverability (the in-app best practice) |
+| Negative-sentiment reply share | Messaging quality and brand risk |
+| Auto-send playbooks as a share of all playbooks | Keep humans in the loop |
+| Failed run rate | Configuration errors (for example a missing sequence) |
+| Integration error count and time to reconnect | Data freshness |
+
+## Related
+
+- [Dashboard](/docs/product/features/dashboard) · [Analytics](/docs/product/features/analytics) · [Pipeline](/docs/product/features/pipeline)
+- [Roadmap](/docs/product/roadmap): warehouse analytics are planned.

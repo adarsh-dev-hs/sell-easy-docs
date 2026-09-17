@@ -1,0 +1,313 @@
+---
+title: Pipeline and activities
+description: Endpoints for deals (list, stats, create, edit, move, delete, CRM sync), the activity timeline, and in-app notifications.
+icon: KanbanSquare
+---
+
+This page covers three modules: **Pipeline** (`/deals`, in `backend/src/modules/pipeline/`), **Activities** (`/activities`) and **Notifications** (`/notifications`).
+
+Unless an endpoint says otherwise, reads need **viewer** or higher and writes need **member** or higher.
+
+## Deals
+
+### The deal object
+
+<TypeTable
+  type={{
+    id: { type: 'string', description: 'deal_… identifier.' },
+    name: { type: 'string', description: '1–200 characters.' },
+    accountId: { type: 'string', description: 'The account. It cannot be changed after the deal is created.' },
+    contactId: { type: 'string?', description: 'Primary contact.' },
+    ownerId: { type: 'string', description: "Defaults to the account's owner, or to the creator if the account has none." },
+    stage: { type: 'DealStage', description: 'discovery → qualified → demo → proposal → negotiation → closed_won / closed_lost' },
+    amount: { type: 'number', description: 'Deal value in USD, at least 0.' },
+    probability: { type: 'number (0–100)', description: 'Defaults to the stage probability. Reset whenever the stage changes.' },
+    closeDate: { type: 'string', description: 'Expected close date, at least 8 characters, such as "2026-12-15". Set to now when the deal closes.' },
+    source: { type: 'string', description: 'For example "Manual", "Inbound", "Sequence reply" or "Agent: website visit". Analytics treats sources starting with "Agent" as agent-sourced.' },
+    crmId: { type: 'string?', description: 'ID in the external CRM, set by CRM sync.' },
+    syncedAt: { type: 'string?', description: 'When the deal was last pushed to the CRM. Cleared by any edit or stage move.' },
+    notes: { type: 'string', description: 'Up to 10,000 characters.' },
+  }}
+/>
+
+List and detail responses also include `account` and `contact` summaries.
+
+| Stage | `id` | Default probability |
+|---|---|---|
+| Discovery | `discovery` | 10 |
+| Qualified | `qualified` | 25 |
+| Demo | `demo` | 40 |
+| Proposal | `proposal` | 60 |
+| Negotiation | `negotiation` | 80 |
+| Closed won | `closed_won` | 100 |
+| Closed lost | `closed_lost` | 0 |
+
+`GET /meta` also serves this table as `dealStages`.
+
+### `GET /deals`
+
+Lists deals. Paginated. The kanban board asks for `pageSize=1000`.
+
+| Query | Type | Notes |
+|---|---|---|
+| `page`, `pageSize` | — | Standard. `pageSize` can go up to 1000. |
+| `q` | string | Matches the deal `name` or `crmId`, **or** the account's name or domain |
+| `ownerId`, `accountId` | string | |
+| `stage` | CSV of stages | |
+| `hideClosed` | boolean | Leaves out `closed_won` and `closed_lost`, even if you listed them in `stage` |
+| `source` | string | Case-insensitive **contains** match |
+| `sort` | `field:dir` | `name`, `amount`, `probability`, `closeDate`, `stage`, `updatedAt` or `createdAt`. Default `updatedAt:desc`. Sorting by `stage` follows **pipeline order**, not alphabetical order. |
+
+```bash
+curl -s "http://localhost:4000/api/v1/deals?hideClosed=true&sort=amount:desc&pageSize=1" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```json title="200 response (trimmed)"
+{
+  "data": [
+    {
+      "id": "deal_18f8db25",
+      "name": "Stratus Pay – Platform",
+      "accountId": "acc_48f8db25",
+      "contactId": "con_164f8db25",
+      "ownerId": "usr_nm78EMj0",
+      "stage": "proposal",
+      "amount": 12000,
+      "probability": 60,
+      "closeDate": "2026-10-22T13:12:46.870Z",
+      "source": "Inbound",
+      "crmId": "HS-917879",
+      "syncedAt": "2026-09-17T12:12:46.870Z",
+      "notes": "",
+      "account": { "id": "acc_48f8db25", "name": "Stratus Pay", "domain": "stratuspay.com", "tier": "B", "score": 66, "industry": "Fintech" },
+      "contact": { "id": "con_164f8db25", "firstName": "Aisha", "lastName": "Larsen", "title": "VP of Sales", "email": "aisha.larsen@stratuspay.com", "accountId": "acc_48f8db25" }
+    }
+  ],
+  "meta": { "total": 34, "page": 1, "pageSize": 1 }
+}
+```
+
+### `GET /deals/stats`
+
+Returns pipeline KPIs. Supported filters: `ownerId`, `accountId` and `q`. Here, `q` matches only the deal name or `crmId`. Closed deals always count toward the stats.
+
+```json title="200 response"
+{
+  "data": {
+    "openPipeline": 1518000,
+    "openCount": 25,
+    "weightedPipeline": 633600,
+    "wonThisQuarter": 204000,
+    "wonThisQuarterCount": 5,
+    "winRate": 55.6,
+    "closedCount": 9,
+    "avgDealSize": 58059,
+    "unsynced": 9,
+    "byStage": [
+      { "stage": "discovery", "label": "Discovery", "count": 5, "amount": 312000 },
+      { "stage": "closed_lost", "label": "Closed lost", "count": 4, "amount": 252000 }
+    ]
+  }
+}
+```
+
+- `weightedPipeline` is the sum of `amount × probability / 100` over open deals.
+- `wonThisQuarter` uses `closeDate` on or after the start of the current calendar quarter, in server local time.
+- `winRate` is `won / (won + lost)`.
+- `avgDealSize` averages every deal in the filter, including open ones.
+
+### `POST /deals`
+
+Creates a deal. **Status:** `201`.
+
+| Body | Type | Required |
+|---|---|---|
+| `name` | string, 1–200 | yes |
+| `accountId` | string | yes. Must exist, otherwise `400 "Account not found"`. |
+| `stage` | stage enum | yes |
+| `amount` | number, at least 0 (coerced) | yes |
+| `closeDate` | string, at least 8 characters | yes |
+| `contactId` | string | no. Must exist, otherwise `400 "Contact not found"`. |
+| `ownerId` | string | no |
+| `probability` | number, 0–100 | no. Defaults to the stage probability. |
+| `source` | string, at most 100 | no. Default `"Manual"`. |
+| `notes` | string, at most 10000 | no |
+
+**Side effects:**
+
+- If the account's stage is `new`, `researching` or `engaged`, it moves to `opportunity`. The change is versioned with source `"Deal created"`.
+- A `stage_change` activity is logged with the title "Deal created: …".
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/deals \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"name":"Polaris Labs – Expansion","accountId":"acc_8f8db25","stage":"discovery","amount":48000,"closeDate":"2026-12-15"}'
+```
+
+### `POST /deals/sync-crm`
+
+Pushes every deal without `syncedAt` to the connected CRM. **Status:** `200`.
+
+**Behaviour:** finds the first connected integration in the `crm` category. If there isn't one, it returns `400 "Connect a CRM integration (HubSpot, Attio or Salesforce) first"`. For each unsynced deal, it sets `crmId` (keeping any existing one) and `syncedAt`. Finally, it updates the integration's `lastSyncAt` and sets its `status` to `ok`.
+
+```json title="200 response"
+{ "data": { "pushed": 9, "crm": "HubSpot", "syncedAt": "2026-09-17T13:40:02.114Z" } }
+```
+
+<Callout type="warn" title="Mocked CRM">
+Nothing is sent to a real CRM. The mock provider generates IDs like `HS-123456`. HubSpot, Attio and Salesforce adapters are planned.
+</Callout>
+
+### `GET /deals/:id`
+
+Returns one deal with `account` and `contact`. **Errors:** `404 "Deal not found"`.
+
+### `PATCH /deals/:id`
+
+Updates a deal. Every create field **except `accountId`** is optional.
+
+- `contactId: null` clears the contact. If you leave it out, it stays unchanged. This endpoint doesn't check that the contact exists.
+- If `stage` changes, the API runs the full [move](#post-dealsidmove) logic first. The probability is set from the new stage unless you also send `probability`.
+- **Every** edit clears `syncedAt`, so the deal is included in the next CRM sync.
+
+Returns the updated deal, **without** the `account` and `contact` summaries.
+
+### `POST /deals/:id/move`
+
+Moves a deal to another stage. The kanban board calls this when you drag a card. **Status:** `200`.
+
+| Body | Type |
+|---|---|
+| `stage` | stage enum |
+
+**Side effects**, only when the stage actually changes:
+
+1. `probability` is set to the stage default, and `syncedAt` is cleared. Moving to `closed_won` or `closed_lost` also sets `closeDate` to now.
+2. **`closed_won`:** the account's stage becomes `customer` (versioned "Deal closed won"), and an org notification "🎉 Deal won" is created with a link to `/pipeline?deal=<id>`.
+3. A `stage_change` activity is logged ("Demo → Proposal"), and `deal.stage_changed` is published.
+
+Moving a deal to the stage it's already in does nothing and returns the deal unchanged.
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/deals/deal_18f8db25/move \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"stage":"negotiation"}'
+```
+
+### `DELETE /deals/:id`
+
+Deletes a deal. **Status:** `204`. **Errors:** `404`.
+
+The deal's activities are kept.
+
+### `GET /deals/:id/activities`
+
+Returns the deal's activity. **Paginated:** `pageSize` can be 1–200 and defaults to **20**.
+
+## Activities
+
+The activity timeline is shared by accounts, contacts and deals.
+
+### The activity object
+
+| Field | Type | Notes |
+|---|---|---|
+| `accountId?`, `contactId?`, `dealId?` | string | Which records the activity belongs to |
+| `type` | `note` \| `email` \| `call` \| `meeting` \| `stage_change` \| `enrichment` \| `score_change` \| `agent` \| `signal` | |
+| `title` | string | |
+| `detail?` | string | |
+| `actorId?` | a user ID, `"agent"` or `"system"` | Who or what caused the activity |
+| `at` | string | When it happened. Timelines sort by this field. |
+
+The system writes most activities automatically: account creation, enrichment, score changes, signals, agent runs, emails sent, meetings and stage changes.
+
+### `GET /activities`
+
+Lists activities, newest first (by `at`). Paginated.
+
+| Query | Notes |
+|---|---|
+| `accountId`, `contactId`, `dealId` | Filters. Several can be combined, and they're AND-ed. |
+| `type` | CSV of types. The values aren't validated. |
+| `page`, `pageSize` | `pageSize` can be 1–200. Default 50. |
+
+```json title="200 response (trimmed)"
+{
+  "data": [
+    { "id": "act_178f8db25", "accountId": "acc_48f8db25", "dealId": "deal_18f8db25", "type": "stage_change", "title": "Deal moved to Proposal", "actorId": "usr_nm78EMj0", "at": "2026-09-17T13:12:46.870Z" }
+  ],
+  "meta": { "total": 224, "page": 1, "pageSize": 1 }
+}
+```
+
+### `POST /activities`
+
+Logs a note, call, meeting or email by hand. **Status:** `201`. The `actorId` is the caller.
+
+| Body | Type | Notes |
+|---|---|---|
+| `type` | activity type | Default `note` |
+| `title` | string, 1–300 | required |
+| `detail` | string, at most 5000 | |
+| `accountId`, `contactId`, `dealId` | string | **At least one is required.** Each ID you send must exist, otherwise `400 "Account not found"` (or Contact or Deal). |
+| `at` | ISO date-time ending in `Z` | Defaults to now. Use it for back-dated entries. |
+
+<Callout type="info" title="Where the link error appears">
+If you send none of `accountId`, `contactId` or `dealId`, the validation message "Link the activity to an account, contact or deal" appears in `details.formErrors`, **not** in `details.fieldErrors`. The response's top-level `message` is "Invalid request body".
+</Callout>
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/activities \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"type":"call","title":"Discovery call with Aisha","detail":"Budget confirmed for Q4","accountId":"acc_48f8db25","dealId":"deal_18f8db25"}'
+```
+
+## Notifications
+
+Notifications are **shared by the whole org**, not addressed to individual users. They're created in three ways: by the agent's `notify` action, when a deal is won, and by the demo seed. The API keeps the 200 newest per org and deletes older ones when a new notification is created.
+
+| Field | Notes |
+|---|---|
+| `kind` | `signal` \| `agent` \| `reply` \| `deal` \| `system` |
+| `title`, `body` | |
+| `href?` | An in-app link, such as `/accounts/acc_…` or `/agent?tab=approvals` |
+| `at`, `read` | |
+
+<Callout type="info" title="Slack delivery">
+When `NODE_ENV=production` and `SLACK_WEBHOOK_URL` starts with `https://hooks.slack.com/`, each notification is also posted to Slack in the background. If the post fails, the error is only logged. The per-user notification preferences (`/me/preferences`) are stored, but notification delivery doesn't read them yet.
+</Callout>
+
+### `GET /notifications`
+
+Returns the newest notifications, newest first. The response is paginated: `meta.page` is always 1 and `meta.pageSize` equals `limit`.
+
+| Query | Notes |
+|---|---|
+| `unreadOnly` | boolean |
+| `limit` | integer, 1–200. Default 50. |
+
+```json title="200 response (trimmed)"
+{
+  "data": [
+    { "id": "ntf_1f8db25", "kind": "agent", "title": "5 drafts awaiting approval", "body": "The orchestration agent drafted outreach for high-intent accounts.", "href": "/agent?tab=approvals", "at": "2026-09-17T12:12:46.870Z", "read": false }
+  ],
+  "meta": { "total": 5, "page": 1, "pageSize": 1 }
+}
+```
+
+### `POST /notifications/:id/read`
+
+Marks one notification as read. **Role:** viewer or higher. **Status:** `200`. Returns the notification.
+
+**Errors:** `404 "notification not found"`.
+
+### `POST /notifications/read-all`
+
+Marks every notification as read. **Role:** viewer or higher. **Status:** `200`.
+
+```json title="200 response"
+{ "data": { "updated": 5 } }
+```
+
+Because notifications are shared by the whole org, this marks them as read for everyone.

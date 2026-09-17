@@ -1,0 +1,296 @@
+---
+title: Troubleshooting
+description: Fixes for the problems people most often hit when running and developing SellEasy locally.
+icon: LifeBuoy
+---
+
+Find your symptom below. Most problems come from four places:
+
+- ports and CORS
+- a stale session token
+- environment validation
+- the JSON store's in-memory cache
+
+If none of these entries help, check the API's terminal output (pino logs) and the browser's network tab. Every API error has a `code` you can look up in [Errors](/docs/engineering/api/errors).
+
+## Connectivity
+
+<Accordions>
+<Accordion title="The browser shows a CORS error, or requests fail only in the browser">
+
+**Symptom:** the console shows `Access to fetch … has been blocked by CORS policy`, and the UI says "Cannot reach the API". The same request works with `curl`.
+
+**Cause:** the web app is running on an origin that isn't in `CORS_ORIGINS`. The usual case is that port 3000 was busy and Next.js started on **3001**, **3002** or another port.
+
+**Fix:**
+
+1. Look at the `next dev` output for the port it actually uses (`- Local: http://localhost:3001`).
+2. Add that origin to `backend/.env`. Separate entries with commas, and don't add trailing slashes:
+
+   ```bash title="backend/.env"
+   CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:3005
+   ```
+
+3. **Restart the API.** The config is read once, at startup.
+
+If the variable isn't set at all, the default in `config.ts` is only `http://localhost:3000`. `CORS_ORIGINS=*` allows any origin, but use it only on a local machine.
+
+</Accordion>
+<Accordion title='"Cannot reach the API at http://localhost:4000/api/v1. Is the backend running?"'>
+
+This is a client-side `network_error`: `fetch` itself failed. Check each of these in turn:
+
+| Check | How |
+|---|---|
+| Is the API running? | `curl -s http://localhost:4000/health` should return `{"status":"ok",…}` |
+| Is the URL right? | `frontend/.env.local` must have `NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1`. The login page shows which host it's using. |
+| Did you change the URL? | `NEXT_PUBLIC_*` values are inlined when Next starts or builds. Restart `next dev`. |
+| Did the API crash on startup? | Look for "Invalid environment configuration" or `EADDRINUSE` in the `api` output. |
+| Is it really a CORS error? | Browsers report blocked CORS requests as network failures. See the entry above. |
+
+</Accordion>
+<Accordion title="Port 4000 or 3000 is already in use (EADDRINUSE)">
+
+```bash
+lsof -i :4000        # find the process
+kill <pid>           # or stop the other app
+```
+
+To use a different port instead:
+
+- For the API, set `PORT=4100` in `backend/.env`, **and** update `NEXT_PUBLIC_API_URL` in `frontend/.env.local` to match.
+- For the web app, run `npm --prefix frontend run dev -- -p 3005`, **and** add that origin to `CORS_ORIGINS`.
+
+An old `npm run dev` that's still running in another terminal is the most common cause.
+
+</Accordion>
+</Accordions>
+
+## Authentication
+
+<Accordions>
+<Accordion title='I keep getting sent back to /login (401 loop) or see "Session expired or invalid token"'>
+
+When any API call returns `401`, the client deletes the stored session, and the app layout redirects to `/login?next=…`. Common causes:
+
+| Cause | What happens |
+|---|---|
+| The token expired | Tokens last `JWT_EXPIRES_IN` (default `7d`). Sign in again. |
+| `JWT_SECRET` changed | This happens if you recreated `backend/.env`, for example by deleting it and running `npm run setup`. Every existing token becomes invalid. Sign in again. |
+| The database was reset | `npm --prefix backend run db:reset` creates **new** user IDs, so old tokens fail with "User no longer has access". |
+| Your user was removed, or hasn't accepted an invite yet | `"User no longer has access"` or `"Your invitation has not been accepted yet"` |
+| Two workspaces in one browser | There's one `selleasy-session` per origin. Signing in to one workspace replaces the other's session. |
+
+If the browser still seems stuck, clear the stored session and reload:
+
+```js
+// browser devtools console
+localStorage.removeItem("selleasy-session")
+```
+
+</Accordion>
+<Accordion title="I can't sign in with the bootstrap admin">
+
+- **The API prints "No organization found in the database" on startup.** The database hasn't been bootstrapped. Run `npm run bootstrap` (or `npm run setup`) and restart the API.
+- **You changed the `BOOTSTRAP_ADMIN_*` values after bootstrapping.** Bootstrap does nothing when the admin email already exists. Either sign in with the original values, or run `npm --prefix backend run db:reset` (this deletes all data).
+- **You're signing in as a demo teammate.** Their password is `Password123!`, not the admin password.
+- **You get `429`.** See [rate limits](#rate-limits).
+
+</Accordion>
+<Accordion title="A button is missing or disabled (Simulate signal, Reset workspace, API keys tab)">
+
+The UI hides controls that the API would reject:
+
+| Control | Needs |
+|---|---|
+| Any create, edit or delete action | Role `member` or higher |
+| API keys tab, integrations connect and configure, ICP save, playbooks, team management | Role `admin` or higher |
+| Plan change, **Reset workspace** | Role `owner`. Reset also needs `ENABLE_ADMIN_RESET=true`, and doesn't appear in production. |
+| **Simulate signal** | `ENABLE_SIMULATION=true` in `backend/.env`, and a role that can write |
+
+`GET /meta` returns the feature flags (`features.simulation`, `features.adminReset`). Restart the API after you change them.
+
+</Accordion>
+</Accordions>
+
+## Configuration and data
+
+<Accordions>
+<Accordion title='The API exits with "❌ Invalid environment configuration"'>
+
+`src/config.ts` validates `process.env` with zod and prints each problem:
+
+```text
+❌ Invalid environment configuration:
+  - JWT_SECRET: JWT_SECRET must be at least 16 characters
+  - ENCRYPTION_KEY: ENCRYPTION_KEY must be 64 hex chars (32 bytes)
+Copy .env.example to .env and fill in the values.
+```
+
+| Variable | Rule |
+|---|---|
+| `JWT_SECRET` | Required, at least 16 characters |
+| `ENCRYPTION_KEY` | Required, exactly 64 hex characters. Generate one with `openssl rand -hex 32`. |
+| `NODE_ENV`, `LOG_LEVEL`, `DB_DRIVER`, `*_PROVIDER`, `*_DRIVER` | Must be one of the allowed values |
+| `ENABLE_*` | `true`, `false`, `1` or `0` |
+| `BOOTSTRAP_ADMIN_EMAIL` / `PASSWORD` | A valid email, and a password of at least 8 characters |
+
+The quickest fix on a fresh clone is `npm run setup`, which generates both secrets.
+
+`DB_DRIVER=postgres` passes validation, but the API then fails with "DB_DRIVER=postgres is not implemented yet". Use `json`. Unimplemented `*_PROVIDER` values only log a warning, and the mock is used instead.
+
+</Accordion>
+<Accordion title="I edited a db/*.json file and nothing changed (or my edit disappeared)">
+
+While the API runs, it loads each collection **once** and serves it from memory. Every write then saves the in-memory copy over the whole file. That means:
+
+- Edits you make to a file while the API is running **aren't seen**.
+- The next write to that collection **overwrites your edit**.
+
+**Fix:** stop the API, edit the file, and start the API again. Better still, use the [Import API](/docs/engineering/api/import) or the UI, which validate, deduplicate and score the data.
+
+Each file must contain a JSON **array**. Any other content makes requests to that collection fail.
+
+</Accordion>
+<Accordion title="Data looks stale after npm run seed:demo, bootstrap or db:reset">
+
+The scripts run in **their own process** and write straight to the JSON files. An API that's already running keeps its in-memory cache (see the entry above).
+
+**Fix:** restart the API (`Ctrl+C`, then `npm run dev`), then reload the browser.
+
+The in-app **Reset workspace** action (`POST /admin/reset`) runs inside the API, so it doesn't need a restart.
+
+</Accordion>
+<Accordion title="Import returns errors or skips rows">
+
+| Message or result | Meaning and fix |
+|---|---|
+| `domain is required`, `Invalid domain "…"` | Each account row needs a domain that normalizes to `name.tld`. `https://www.acme.com/x` is fine; `acme` isn't. |
+| `employees must be a number (got "…")` | Use `1200`, `1,200`, `1.2k`, `50-200` or `1000+` |
+| `No team member with email …` | `ownerEmail` must belong to a member of your workspace |
+| `Unknown seniority "…"` | Use C-Level, VP, Director, Manager or IC, or leave the value empty so it's inferred from the title |
+| `Account "…" not found — add an account domain column to create it` | `accountName` only matches existing accounts. Add an `accountDomain` column. |
+| `An account is required (accountId, accountDomain or accountName)` | Every new contact needs one of these columns |
+| `firstName (or name) is required` | Add a `firstName` or a full `name` column |
+| Many rows `skipped` | Those records already exist (same domain or email), or appear twice in the file. Turn on **Update existing records** to update them instead. |
+| `CSV is empty` / `Invalid CSV: …` / `Invalid JSON: …` | The file is empty or malformed. JSON must be an **array** of objects. |
+| `413 payload_too_large`, or `content must be at most … bytes` | The file is larger than `IMPORT_MAX_BYTES` (5 MB). Split it, or raise the limit. |
+
+CSV row numbers are **file line numbers**, where the header is line 1. Run a **dry run** first to see every problem without saving anything. See [Import](/docs/engineering/api/import).
+
+</Accordion>
+<Accordion title='Signals from the webhook are rejected with "No account with domain …"'>
+
+Webhook signals are matched to **existing, non-duplicate** accounts by normalized domain. They never create accounts. Import the account first, or send its `accountId`.
+
+The request still returns `202`. Check `results[].ok` for each item.
+
+</Accordion>
+</Accordions>
+
+## Rate limits
+
+<Accordions>
+<Accordion title="429 Too Many Requests">
+
+| Limiter | Default | Where to change it |
+|---|---|---|
+| All `/api/v1` routes | 600 requests per 60 s per IP | `RATE_LIMIT_MAX` and `RATE_LIMIT_WINDOW_MS` in `backend/.env` |
+| `/auth/login`, `/auth/register`, `/auth/accept-invite` | 20 per 15 minutes in **production**, 1000 in other environments | Hard-coded in `modules/auth/routes.ts` |
+
+A 429 response has a **plain-text** body, not the JSON envelope. Read the `RateLimit-Reset` header to know when to retry.
+
+Scripts and load tests use up the global limit quickly. Raise `RATE_LIMIT_MAX` locally (the test suite uses `100000`), or add delays. Behind a proxy, check that `trust proxy` (set to `1`) matches your setup. Otherwise every client appears to come from the proxy's IP.
+
+</Accordion>
+</Accordions>
+
+## Development pitfalls
+
+<Accordions>
+<Accordion title="A PATCH resets fields I didn't send (zod defaults inside .partial())">
+
+With zod, `.default()` still applies after `.partial()`. If a create schema has `enabled: z.boolean().default(true)` and the PATCH route reuses it as `schema.partial()`, then a PATCH that leaves out `enabled` gets `enabled: true` added, and the stored value is **silently overwritten**.
+
+**Fix:** keep defaults out of the shared field schema, and add them only to the create schema. `agent/routes.ts` does this:
+
+```ts title="backend/src/modules/agent/routes.ts"
+// No defaults here: zod applies defaults even inside .partial(), which would clobber PATCHes.
+const ruleFields = z.object({ name: z.string().trim().min(1).max(120), enabled: z.boolean(), /* … */ })
+const ruleCreate = ruleFields.extend({ enabled: z.boolean().default(true), /* … */ })
+
+route({ method: "post", path: "/playbooks", body: ruleCreate, /* … */ })
+route({ method: "patch", path: "/playbooks/:id", body: ruleFields.partial(), /* … */ })
+```
+
+</Accordion>
+<Accordion title='Next.js warns: "inferred your workspace root … multiple lockfiles"'>
+
+The repo root has its own `package.json` and `package-lock.json` (for `concurrently`), so Turbopack can pick the wrong root. `frontend/next.config.ts` fixes this:
+
+```ts title="frontend/next.config.ts"
+const nextConfig: NextConfig = {
+  turbopack: { root: path.resolve(__dirname) },
+}
+```
+
+If you see the warning again, check that this setting is still there. The docs app (`docs/`) has the same layout, with its own lockfile.
+
+</Accordion>
+<Accordion title="Build error: useSearchParams() should be wrapped in a suspense boundary">
+
+Next.js 16 requires a `<Suspense>` boundary around any client component that calls `useSearchParams()` in a page that can be rendered statically. Wrap the page body:
+
+```tsx
+export default function Page() {
+  return (
+    <Suspense>
+      <PageInner />
+    </Suspense>
+  )
+}
+```
+
+</Accordion>
+<Accordion title="ESLint: react-hooks/set-state-in-effect or react-hooks/purity errors">
+
+These React Compiler rules are **errors** in this repository.
+
+- **`set-state-in-effect`:** don't copy props or URL params into state inside `useEffect`. Derive the value during render, remount the component with a `key`, or set the state in the event handler.
+- **`purity`:** don't call `Date.now()`, `Math.random()` or `new Date()` while rendering. Use a state initializer, such as `useState(currentTime)`, or compute the value in a handler.
+
+See [UI conventions](/docs/engineering/frontend/ui-conventions#lint-rules-to-respect).
+
+</Accordion>
+<Accordion title='git push is rejected: "GH013: Repository rule violations … Push cannot contain secrets"'>
+
+GitHub push protection found something that looks like a secret. It flags placeholders that are shaped like real tokens too.
+
+1. Find the commit and file the error names.
+2. Replace the value with an obviously fake placeholder, such as `dummy-…` or `your-…-key`.
+3. Rewrite the commits that contain it: `git commit --amend` for the last commit, or rebase and edit the one that introduced it. A later commit that deletes the value doesn't help, because the secret is still in history.
+4. Push again.
+
+If the value was a **real** credential, rotate it. See the [secrets policy](/docs/engineering/contributing#secrets-policy).
+
+</Accordion>
+<Accordion title="Emails, CRM syncs or enrichment don't reach real vendors">
+
+That's expected. Every provider is a **mock**, even when a `*_PROVIDER` variable is set to something else:
+
+- Email "sends" only write a debug log line.
+- CRM push generates fake IDs.
+- Enrichment fills fields with plausible values.
+- Integration "connect" accepts any key of 8 or more characters.
+
+See [Events and providers](/docs/engineering/backend/events-and-providers).
+
+</Accordion>
+<Accordion title="Tests fail or interfere with my local data">
+
+`npm test` runs vitest with `DATA_DIR` set to a temporary folder (`selleasy-test-<pid>`), and deletes it afterwards. Your `backend/db` is never touched. Test files run one after another (`fileParallelism: false`).
+
+If a test fails because of leftover state, delete any `selleasy-test-*` folders in your system temp directory, then run the tests again.
+
+</Accordion>
+</Accordions>

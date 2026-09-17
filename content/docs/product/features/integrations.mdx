@@ -1,0 +1,148 @@
+---
+title: Integrations
+description: The vendor catalog by category, how to connect, test, rotate and disconnect, per-vendor settings, sync history and the enrichment waterfall.
+icon: Plug
+---
+
+SellEasy relies on specialist vendors for data, delivery and CRM ("rent, don't build"). The **Integrations** screen (`/integrations`) lists **19 vendors in 9 categories**. It shows what each one feeds, lets admins connect them with an API key, and sets the order of the **enrichment waterfall**.
+
+**Who uses it:** workspace admins and RevOps.
+
+<Callout type="warn" title="Adapters are mocked">
+Connecting stores your key **encrypted** and marks the vendor connected, but **no real vendor API is called yet**:
+- the connection test accepts any key of **8 or more characters**;
+- **Sync now** only updates the last-sync time and adds a random 0–150 to the usage counter;
+- the **Recent syncs** log is generated from the last-sync time and status;
+- most per-category settings are stored but not yet used by the backend.
+
+See the [roadmap](/docs/product/roadmap) for the plan to build real adapters.
+</Callout>
+
+## Catalog
+
+| Category (UI label) | Vendor | What it does | Feeds |
+|---|---|---|---|
+| Enrichment | **Clearbit** | Firmographic and technographic company enrichment | Entity service |
+| Enrichment | **FullEnrich** | Waterfall email and phone enrichment across 15+ providers | Entity service |
+| Enrichment | **Prospeo** | Email finder and verifier from LinkedIn URLs | Entity service |
+| TAM & contacts | **Apollo.io** | B2B contact database and TAM sourcing API | Entity service |
+| TAM & contacts | **Limadata** | Real-time person and company data | Entity service |
+| Intent & signals | **Bombora** | Company surge intent across B2B topics | Signal ingestion |
+| Intent & signals | **RB2B** | Person-level website visitor identification | Signal ingestion |
+| Intent & signals | **Trigify.io** | Social engagement and job-change signals | Signal ingestion |
+| Web scraping | **Apify** | Scrape job boards, websites and review sites | Entity service |
+| Web scraping | **Linkup** | Web search API for news and account research | Entity service |
+| Email deliverability | **AWS SES** | Transactional and outbound email sending | Outreach service |
+| Email deliverability | **Mailpool** | Managed inboxes with warm-up and deliverability | Outreach service |
+| Email deliverability | **Instantly.ai** | Cold email infrastructure with a warm-up network | Outreach service |
+| LinkedIn outreach | **HeyReach** | LinkedIn automation across multiple sender accounts | Outreach service |
+| Call intelligence | **Fireflies.ai** | Call recording, transcription and insights | Analytics |
+| CRM sync | **HubSpot** | Two-way sync of companies, contacts and deals | CRM/Pipeline |
+| CRM sync | **Attio** | Sync records and lists with Attio | CRM/Pipeline |
+| CRM sync | **Salesforce** | Enterprise CRM sync for accounts, leads and opportunities | CRM/Pipeline |
+| LLM | **Anthropic (Claude)** | Agentic scoring, research and outreach drafting | Scoring + orchestration |
+
+The catalog is created for every new workspace, with every vendor disconnected. It is recreated in that state when the workspace is reset.
+
+### How a connection is used today
+
+| Connection | Effect in the product today |
+|---|---|
+| Connected **enrichment / contacts** vendors with *Use in waterfall* on | Make up the enrichment waterfall. The mock enricher reports the first two as sources. |
+| Any connected **CRM** | Required before **Sync to CRM** works. The connected CRM's name is shown on deal sheets. |
+| Other categories | Connection status and usage are shown, but nothing depends on them yet |
+
+## Page layout
+
+- **Error alert:** lists any integration in **error** status, with **Reconnect** buttons.
+- **Stat cards:** **Connected** (N / 19), **Errors** (with names), and **Credits used (month)**, the total usage of connected vendors measured in credits. The hint adds LLM usage in thousands of tokens.
+- **Filters:** search by name, description or feed, a **Connected only** switch, and category chips with counts.
+- **Grid**, grouped by category ("N of M connected"). Each card shows the vendor, status, last sync, description, what it feeds, and a monthly usage bar when connected.
+- **Enrichment waterfall** card and a **How data flows** explainer.
+
+## Connecting a vendor
+
+<Steps>
+<Step>Click **Connect** on a card (admins only; the button is disabled for others).</Step>
+<Step>Paste the vendor **API key** (at least 8 characters). The field is masked.</Step>
+<Step>Click **Connect**. The key is **tested**, then stored **encrypted** (AES-GCM with the server's `ENCRYPTION_KEY`). Only a **masked** value is ever returned.</Step>
+<Step>The card changes to **Connected**, status **ok**, with a new usage meter (limit 10,000 **credits**, or **k tokens** for the LLM).</Step>
+</Steps>
+
+If the test fails, the dialog shows the error, for example *"API key looks invalid"*.
+
+## Configure sheet
+
+Click **Configure** on a connected vendor.
+
+### Credentials
+
+Shows the **masked key**. **Rotate key** (admins) accepts a new key, tests it and replaces the old one. Rotation uses the same endpoint as connecting.
+
+### Settings
+
+All categories have **Auto sync** (default on) and a **Sync interval** (every 15 minutes, hourly or daily; default hourly). Category-specific settings:
+
+| Category | Setting | Default in the UI |
+|---|---|---|
+| Enrichment | **Use in waterfall** · Overwrite existing fields | On · Off |
+| TAM & contacts | **Use in waterfall** · Verify emails on import | On · On |
+| Intent & signals | Minimum signal strength (30 capture everything / 50 balanced / 70 high intent only) | 50 |
+| Web scraping | Max pages per run | 500 |
+| Email deliverability | Daily send cap per mailbox · Track opens | 50 · On |
+| LinkedIn outreach | Daily connection requests per sender | 25 |
+| Call intelligence | Push call summaries to CRM | On |
+| CRM sync | Write-back to CRM · Conflict resolution (most recent wins / CRM wins / SellEasy wins) | On · Most recent wins |
+| LLM | Default model (claude-opus-5, claude-sonnet-5, claude-haiku-4-5) · Monthly token budget (k) | claude-sonnet-5 · 10,000 |
+
+Number fields must be at least their minimum. **Save settings** (admins) merges the changes into the stored settings.
+
+<Callout type="info">Only **Use in waterfall** changes behaviour today. The other settings are saved for the real adapters to use later.</Callout>
+
+### Usage and sync history
+
+- **Usage:** used / limit and the amount left this billing cycle.
+- **Recent syncs:** the last 5 entries (success or failure, message such as "Synced 87 records", duration and time). Entries are spaced by the sync interval. If the integration is in error, the latest entry shows *"401 Unauthorized — API key rejected"*.
+
+### Disconnect
+
+**Disconnect** (admins, after confirmation) marks the vendor disconnected, **deletes the stored key** and clears the last-sync time. The vendor's settings are kept.
+
+### Sync now
+
+**Sync now** (members and above) is available on connected cards that aren't in error. It requires the vendor to be connected. It sets the status to **ok**, updates the last-sync time and increases usage (mock). Cards in **error** show **Reconnect** instead.
+
+## Enrichment waterfall
+
+The waterfall is the ordered list of **connected** Enrichment and TAM & contacts vendors that have **Use in waterfall** on. The idea: try provider 1, and on a miss fall through to the next. Order providers by match rate and cost.
+
+<Steps>
+<Step>Connect at least one enrichment or contacts vendor. Otherwise the card shows "No waterfall providers".</Step>
+<Step>Use the ↑ / ↓ arrows (admins) to reorder. Each move saves immediately ("*Vendor* moved to position N").</Step>
+</Steps>
+
+Rules:
+- The order is stored on the organization. The default is `clearbit → apollo → fullenrich → prospeo → limadata`. Vendors not in the list come after the listed ones, in catalog order.
+- Only enrichment and contacts vendor keys are accepted. Keys that were ordered before but aren't in the new list (for example disconnected vendors) keep their relative order after the new list.
+- Enrichment from the account list, the account page or the agent reads this order. The mock enricher records the **first two** providers as sources, or *Clearbit* if the waterfall is empty.
+
+## Permissions
+
+| Action | Viewer | Member | Admin | Owner |
+|---|:-:|:-:|:-:|:-:|
+| View catalog, stats, settings, sync history, waterfall | ✔ | ✔ | ✔ | ✔ |
+| Sync now | – | ✔ | ✔ | ✔ |
+| Connect, reconnect, rotate key, disconnect | – | – | ✔ | ✔ |
+| Change settings, reorder waterfall | – | – | ✔ | ✔ |
+
+## Security notes
+
+- Vendor keys are encrypted at rest and never returned to the browser. Only a masked value is shown.
+- Keys are deleted on disconnect.
+- SellEasy's **own** API keys (for pushing signals into SellEasy) are managed in [Settings → API keys](/docs/product/features/settings#api-keys), not here.
+
+## Related
+
+- [Accounts → Enrichment](/docs/product/features/accounts#enrichment)
+- [Pipeline → CRM sync](/docs/product/features/pipeline#editing-and-crm-sync)
+- [Configuration (env vars for providers)](/docs/engineering/configuration)

@@ -1,0 +1,192 @@
+---
+title: Accounts
+description: The company list and account detail page, covering filters, bulk actions, score breakdown, history, activity, duplicates and enrichment.
+icon: Building
+---
+
+Accounts are the core record in SellEasy. The **Accounts** screen (`/accounts`) lists every company in your TAM with its tier, score, intent, stage and owner. The **account detail** page (`/accounts/:id`) shows everything known about one company: firmographics, how the score was built, contacts, signals, deals, activity and field-level history.
+
+**Who uses it:** RevOps (data quality, ownership), SDRs and AEs (daily work).
+
+## Account list
+
+### Tabs
+
+| Tab | Shows | Count badge |
+|---|---|---|
+| **All** | Every account **except** those flagged as duplicates | Non-duplicate accounts |
+| **My accounts** | Accounts you own | Accounts you own |
+| **Unassigned** | Accounts with no owner | Accounts with no owner |
+| **Duplicates** | The duplicate review queue (see below) | Flagged accounts, highlighted in amber when there are any |
+
+### Filters, search and sorting
+
+- **Search** matches name or domain (case-insensitive "contains").
+- **Filters:** Tier (A–D), Industry, Stage, Owner (any active non-viewer user, or *Unassigned*). **Reset** clears them all.
+- **Sortable columns:** Company (name), Employees, Score, Intent, Updated. The default sort is **Score, descending**, with name as the tie-breaker.
+- **Paging:** 20 rows per page.
+
+Columns: Company (name and domain), Industry, Employees, Tier, Score (hover to see fit and intent), Intent (bar), Stage, Owner, Updated (with "Enriched X ago" or "never") and a row menu.
+
+### Row menu
+
+**View** · **Enrich** · **Re-score** · **Assign owner** (submenu with a check mark on the current owner) · **Delete**. Only **View** is available to viewers.
+
+### Bulk actions
+
+Select rows with the checkboxes. The page checkbox selects every row on the current page, and selections are kept across pages. The bulk bar offers:
+
+| Action | What happens |
+|---|---|
+| **Enrich** | Runs enrichment on each selected account **(mock)**. A message reports how many scores changed. |
+| **Re-score** | Recalculates each score with the history reason "Manual re-score" and reports how many changed. |
+| **Assign owner** | Sets the owner (or *Unassigned*) on every selected account **and all of their contacts**. Each account gets a version entry. |
+| **Add contacts to sequence** | Enrolls **all** contacts of the selected accounts into an active or paused sequence. Ineligible contacts are skipped. |
+| **Delete** | Asks for confirmation, then deletes the accounts and everything attached to them (see [Deletion](#deletion)). |
+
+### Adding an account
+
+<Steps>
+<Step>Click **Add account** (or use ⌘K → *Add account*, or open `/accounts?new=1`).</Step>
+<Step>Enter the **company name**, **domain** (must contain a dot), industry, employees (at least 1), country and an optional owner.</Step>
+<Step>Submit. The API normalizes the domain, scores the account and checks for duplicates. A message shows the score and tier, or warns **"possible duplicate"** if another account already uses that domain.</Step>
+</Steps>
+
+Rules applied on creation:
+
+- The domain is lower-cased, and `http(s)://`, `www.` and anything after the first `/` are removed.
+- Default stage is **New**. If industry isn't given, it defaults to *Other*. If revenue isn't given, it is estimated as `employees × $120,000`.
+- An **Initial score** point is added to the score history, version 1 is recorded as *created* with its source, and an "Account created" activity is logged.
+
+## Account detail
+
+### Header
+
+- Name, tier badge, a **Possible duplicate** badge when flagged, a domain link, industry and location.
+- **Stage** selector (all six stages) and **Owner** selector. If the current owner is inactive or a viewer, they still appear in the list but can't be selected.
+- Actions (members and above): **Enrich**, **Re-score**, **Add to sequence** (pick contacts; eligible ones are pre-selected), **Create deal**, and a **⋯** menu with **Edit account**, **New account** and **Delete**.
+- **Duplicate banner**, shown when the account is flagged: it links to the canonical record and offers **Not a duplicate** and **Merge**.
+
+### Stat cards
+
+**Score** (with the previous score and tier), **Fit** (ICP match), **Intent** (with the number of signals), **Open pipeline** (the total of open deals and their count).
+
+### Tabs
+
+<Tabs items={['Overview', 'Contacts', 'Signals', 'Deals', 'Activity', 'History']}>
+<Tab value="Overview">
+
+- **Firmographics:** industry, employees, revenue, funding, location, stage, created, last updated, LinkedIn, description, technologies, tags and enrichment sources. The subtitle shows when the account was enriched and by which providers, or "Not enriched yet".
+- **Score history:** a line chart of score, fit and intent over the last 20 scoring events. Hover a point to see the reason (for example "Signal: Visited pricing page" or "ICP configuration updated").
+- **Score breakdown:** each of the six fit criteria with ✔ or ✘, points out of the maximum (25/20/15/15/15/10), a progress bar and the account's value. The header shows "Fit N/100 · weighted X% fit / Y% intent", and a link goes to the ICP page.
+- **Intent contributors:** the top 6 signals by points contributed (strength × weight × decay × 0.45, one decimal place), with type and age, plus the half-life in use. Signals older than three half-lives contribute nothing and are not listed.
+
+</Tab>
+<Tab value="Contacts">
+
+All contacts on the account, with name and title, seniority, email with its status, status, and last contacted. Click a row to open the [contact sheet](/docs/product/features/contacts#contact-sheet).
+
+- **Verify emails** checks every contact that isn't verified yet. When rows are selected, the button becomes **Verify selected** and checks only those. **(mock)**
+- **Enroll selected** opens the enroll dialog.
+- **Add contact** creates a contact on this account. Location and owner are copied from the account.
+
+</Tab>
+<Tab value="Signals">
+
+Every signal for the account, newest first. Each shows title, detail, type, source, contact (if any), relative time, a strength bar and a Processed or Unprocessed badge. Unprocessed signals have a **Process now** button, which runs the agent on that signal and shows the result with a **View run** link.
+
+</Tab>
+<Tab value="Deals">
+
+The account's deals with stage, amount, probability, close date, owner, source and CRM ID. Deal names link to `/pipeline?deal=…`. **Create deal** opens a form prefilled with "*Account* – New business", an amount of `max(12, round(employees × 40 / 1000)) × $1,000`, stage Discovery and a close date 45 days out.
+
+</Tab>
+<Tab value="Activity">
+
+- **Log activity** (members and above): type (Note, Call, Meeting, Email), title and details.
+- **Timeline:** the latest 50 events for the account. These include notes, emails, calls, meetings, stage changes, enrichment, score changes, agent runs and signals, each with its actor (a user, *Agent* or *System*).
+
+</Tab>
+<Tab value="History">
+
+One card per **entity version**, newest first. Each card shows `vN`, the source (Manual edit, CSV import, Waterfall enrichment, Agent routing, Owner assignment, Deal created, Deal closed won, Merged duplicate…), a timestamp and a *Field / From / To* table. Scores and timestamps are not versioned.
+
+</Tab>
+</Tabs>
+
+### Editing an account
+
+**Edit account** lets you change the name, industry, employees, revenue, funding stage, country, city, technologies and tags (both comma-separated), and the description. On save:
+
+- A version entry records every changed field with the source "Manual edit".
+- If industry, employees, revenue, country, technologies or funding stage changed, the account is **re-scored** and the message shows *Score X → Y*.
+- Changing the stage or owner from the header is also versioned. Changing the owner updates every contact on the account too.
+
+## Duplicates
+
+<Steps>
+<Step>Open **Accounts → Duplicates**. Each card shows the **Duplicate** next to its **Canonical** record, with domain, created date, source (from the first version), industry, contact count, and score and tier.</Step>
+<Step>Choose **Not a duplicate** to clear the flag, or **Merge into canonical** and confirm.</Step>
+</Steps>
+
+**What a merge does:**
+
+1. Moves the duplicate's contacts, signals, deals, activities, agent drafts and agent runs to the canonical account. Enrollments stay attached to the moved contacts.
+2. Deletes the duplicate.
+3. Updates the canonical account: tags and technologies become the combination of both, and the owner stays the canonical owner (or takes the duplicate's owner if the canonical account had none). This change is versioned as `Merged duplicate "<name>"`.
+4. Logs an activity and **re-scores** the canonical account ("Duplicate merged").
+
+If the canonical record no longer exists, **Merge** is disabled. An account can only be merged if it is currently flagged.
+
+## Enrichment
+
+Enrichment fills in firmographic gaps using your connected **enrichment** and **contacts** vendors, in the order set by the [waterfall](/docs/product/features/integrations#enrichment-waterfall).
+
+<Callout type="warn" title="Mock adapter">
+Today the enrichment provider is a mock:
+- sets employees to 50 if it was 0;
+- adds **one** technology the account doesn't have yet, taken from Snowflake, Segment, HubSpot, Salesforce, Outreach and Gong in that order;
+- fills city (San Francisco), description and LinkedIn URL only if they are empty;
+- reports the **first two** waterfall providers as sources, or *Clearbit* if none are connected.
+</Callout>
+
+Each enrichment:
+- records a version with the source `Waterfall enrichment (A → B)`;
+- sets `enrichedAt` and adds the providers to `enrichmentSources`;
+- logs an `enrichment` activity;
+- re-scores the account if a scoring field changed. Adding a matching technology can raise fit by 5.
+
+## Deletion
+
+Deleting an account (single or bulk) permanently removes:
+
+- the account;
+- its contacts, and those contacts' enrollments and inbox messages;
+- its deals, signals, agent drafts, agent runs and activities.
+
+Any accounts flagged as duplicates of the deleted account become standalone records.
+
+## Permissions
+
+| Action | Viewer | Member | Admin | Owner |
+|---|:-:|:-:|:-:|:-:|
+| View list, detail, breakdown, history, duplicates | ✔ | ✔ | ✔ | ✔ |
+| Add, edit, delete, assign, change stage | – | ✔ | ✔ | ✔ |
+| Enrich, re-score, merge, dismiss duplicate | – | ✔ | ✔ | ✔ |
+| Enroll contacts, create deal, log activity | – | ✔ | ✔ | ✔ |
+
+## Edge cases & limitations
+
+- The **All** tab hides flagged duplicates, but **My accounts** and **Unassigned** include them.
+- The owner selectors list only **active, non-viewer** users.
+- **Add contacts to sequence** from the list enrolls every contact on the selected accounts. Use the account page to choose specific contacts.
+- The score history keeps only the last **20** points.
+- Enrichment runs one account at a time, and each mock call takes about a second.
+- The Activity tab shows only the latest 50 events.
+
+## Related
+
+- [Core concepts → Scoring](/docs/product/core-concepts#scoring)
+- [Data import](/docs/product/features/data-import)
+- [Contacts](/docs/product/features/contacts)
+- [API reference](/docs/engineering/api)

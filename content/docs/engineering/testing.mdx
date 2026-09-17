@@ -1,0 +1,223 @@
+---
+title: Testing
+description: The backend API test suite, how to write new tests, frontend static checks, a manual smoke checklist and a recommended CI pipeline.
+icon: FlaskConical
+---
+
+The backend has an end-to-end API test suite built with **vitest** and **supertest**. It runs the real Express app against a temporary JSON database, with no mocks beyond the built-in provider mocks. The frontend has no unit tests yet and is checked with TypeScript, ESLint and a production build. This page covers all of it, plus a manual smoke checklist and a CI setup.
+
+## Running tests
+
+```bash
+npm test                       # from the repo root → npm --prefix backend test
+cd backend && npm test         # vitest run
+cd backend && npx vitest       # watch mode
+cd backend && npx vitest run -t "API keys"   # filter by test name
+cd backend && npm run typecheck              # tsc --noEmit over src, scripts and tests
+```
+
+## Test setup
+
+```ts title="backend/vitest.config.ts"
+export default defineConfig({
+  test: {
+    include: ["tests/**/*.test.ts"],
+    fileParallelism: false,
+    testTimeout: 20_000,
+    env: {
+      NODE_ENV: "test",
+      JWT_SECRET: "test-secret-test-secret-test-secret",
+      ENCRYPTION_KEY: "1".repeat(64),
+      DATA_DIR: path.join(os.tmpdir(), `selleasy-test-${process.pid}`),
+      ENABLE_SIMULATION: "true",
+      ENABLE_ADMIN_RESET: "true",
+      RATE_LIMIT_MAX: "100000",
+    },
+  },
+})
+```
+
+| Setting | Why |
+|---|---|
+| `NODE_ENV=test` | Sets the pino level to `silent`, and provider mocks skip their artificial delays (`sleep` → 0 ms). |
+| `JWT_SECRET`, `ENCRYPTION_KEY` | Fixed values that pass `config.ts` validation, so tests don't depend on a local `.env`. The `env` block is applied before `dotenv`, which never overrides existing variables. |
+| `DATA_DIR` in `os.tmpdir()` | Each run gets its own throwaway database, separate from `backend/db`. The suite deletes it in `afterAll`. |
+| `ENABLE_SIMULATION`, `ENABLE_ADMIN_RESET` | Lets tests use `/signals/simulate` and `/admin/reset`. |
+| `RATE_LIMIT_MAX=100000` | Keeps the global rate limiter from interfering. |
+| `fileParallelism: false` | Test files share the same process-level repository cache and data dir, so they must not run concurrently. |
+| `testTimeout: 20_000` | Bcrypt hashing and seeding take a moment. |
+
+`tests/api.test.ts` imports `createApp()` and calls it through `supertest`, without opening a port. In `beforeAll` it calls `createOrganization()` (owner `owner@testorg.com` / `Password123!`), then `seedDemoData()` to load the full demo dataset, then logs in to get a token.
+
+## What `tests/api.test.ts` covers
+
+| Suite | Test | Asserts |
+|---|---|---|
+| auth | rejects bad credentials and missing tokens | Wrong password → 401. `GET /accounts` without a token → 401. |
+| | returns the current user without secrets | `GET /auth/me` returns the email, and `passwordHash` is undefined |
+| | registers a new isolated workspace | `POST /auth/register` → 201. The new tenant sees `meta.total = 0` and gets **404** for the first tenant's account. |
+| accounts | lists with filters, sorting and pagination | `tier=A,B&sort=score:desc&pageSize=5` returns 5 A/B accounts in descending order. `sort=hack:asc` → 400. |
+| | creates, flags duplicates, versions edits and deletes | Domain normalization (`https://www.zed.dev/` → `zed.dev`), `duplicateOf` on the second create, PATCH `employees` triggers a rescore, version diff `200 → 900`, merge → 200, delete → 204, then 404 |
+| | validates input | Empty name → 400 `bad_request` |
+| signal → agent → approval flow | processes an ingested signal and approves the resulting draft | Ingest `website_visit` (strength 95) on the top tier-A account → 201. The run starts with `evaluate` and the signal is `processed`. A pending draft has a contact. Approve with an edited subject → `sent`. A second approve → **409**. |
+| | queues signals when autopilot is off | With autopilot off, `simulate` returns `run: null` and `process-pending` processes more than 0 signals. Autopilot is switched back on afterwards. |
+| roles and API keys | blocks viewers from writes | Viewer login (demo password): GET → 200, POST `/accounts` → **403** |
+| | ingests via webhook with a scoped API key | Create a key with `signals:write`. A batch with one known domain and one unknown domain → 202 with `accepted: 1`. After revocation → 401. |
+| pipeline, import, integrations | moves deals and marks the account as customer on win | `move` to `closed_won` sets probability to 100 and the account stage to `customer` |
+| | imports CSV accounts with row-level errors | CSV with aliases (`Company`, `Website`, `Employees`) → `total 2, created 1`, and the error is on spreadsheet row 3 |
+| | never exposes stored vendor credentials | Connecting an integration returns no plaintext, no `apiKeyEncrypted`, and `apiKeyMasked` ends in `1234` |
+| | serves analytics and the OpenAPI document | `/analytics/dashboard` → 200. `openapi.json` has more than 50 paths. |
+
+There are 14 tests in total. Tests within the file **share state** (the same org, token and data) and run in order: later tests rely on the demo data, and some change it (for example, autopilot is toggled and then restored).
+
+### Not covered yet
+
+Outreach (sequences, steps, enrollments, inbox, book-meeting), contact endpoints, playbook CRUD and validation, ICP update and preview, search, notifications, the analytics overview and CSV export, admin reset, invites and accept-invite, change-password, the rate limiter, and the repository query operators in isolation. The scoring engine has no unit tests either, even though its functions are pure.
+
+## Writing a new API test
+
+Follow the existing pattern: one `describe` per feature, the shared `app`, `api()` and `auth()` helpers, and assertions on the envelope (`body.data`, `body.meta`, `body.error.code`).
+
+```ts title="backend/tests/api.test.ts"
+describe("playbooks", () => {
+  it("requires a sequence for enroll_sequence and normalizes actions", async () => {
+    const bad = await request(app)
+      .post(api("/agent/playbooks"))
+      .set(auth())
+      .send({ name: "Enroll hot", trigger: "funding", minScore: 40, tiers: ["A"], actions: ["enroll_sequence"] })
+    expect(bad.status).toBe(400)
+    expect(bad.body.error.message).toMatch(/Pick a sequence/)
+
+    const created = await request(app)
+      .post(api("/agent/playbooks"))
+      .set(auth())
+      .send({ name: "Notify only", trigger: "news", minScore: 0, tiers: ["A", "B"], actions: ["notify"] })
+    expect(created.status).toBe(201)
+    expect(created.body.data.actions).toEqual(["rescore", "notify"])
+    expect(created.body.data.requireApproval).toBe(true) // create default
+
+    // PATCH must not reset defaults (see the .partial() pitfall)
+    const patched = await request(app)
+      .patch(api(`/agent/playbooks/${created.body.data.id}`))
+      .set(auth())
+      .send({ requireApproval: false })
+    expect(patched.body.data.enabled).toBe(true)
+
+    expect((await request(app).delete(api(`/agent/playbooks/${created.body.data.id}`)).set(auth())).status).toBe(204)
+  })
+})
+```
+
+Guidelines:
+
+- **Use the HTTP surface**, not services, so validation, roles and envelopes are exercised too. Call services directly (as `beforeAll` does) only for setup.
+- **Create your own fixtures** when you change data, or restore what you changed, so later tests don't break.
+- **Test the negative paths** every endpoint should have: 401 (no token), 403 (viewer, or a member on an admin route), 404 (another tenant's id) and 400 (invalid body).
+- For a **different role**, log in as a seeded demo user (`Password123!`) found through `GET /users`, as the viewer test does.
+- For **pure logic**, add a separate file such as `tests/scoring.test.ts` that imports `computeFit` / `computeIntent` from `src/modules/scoring/engine.ts`. Pass `now` explicitly to `computeIntent` so results are deterministic.
+- Keep new test files self-contained. Files run one at a time (`fileParallelism: false`) with a fresh module graph each, but they share the same `DATA_DIR`. Create your own organization with a unique email in `beforeAll`, and remove the data dir in `afterAll` the way `api.test.ts` does.
+
+## Frontend checks
+
+The frontend (`frontend/`) has no test runner. Use these static checks:
+
+```bash
+cd frontend
+npx tsc --noEmit     # type-check (no dedicated script)
+npm run lint         # eslint with eslint-config-next (core-web-vitals + typescript)
+npm run build        # next build — catches server/client boundary and route errors
+```
+
+`frontend/src/lib/types.ts` mirrors `backend/src/domain/types.ts` by hand. When you change an API shape, update both files and run `tsc` in both apps.
+
+## Manual / end-to-end smoke checklist
+
+Run against `npm run setup -- --demo` and `npm run dev`, signed in as the bootstrap admin:
+
+<Steps>
+<Step>**Login and session.** Sign in, reload (the session persists), sign out and back in. A wrong password shows an error.</Step>
+<Step>**Dashboard** loads its KPIs, pipeline by stage, hot accounts, latest signals and agent runs.</Step>
+<Step>**Accounts.** Filter by tier, sort, paginate. Create an account with an existing domain and confirm it appears under Duplicates, then merge it. Edit employees and check that the score changes and a version is recorded. Enrich an account. Bulk-assign an owner.</Step>
+<Step>**Import.** Download the template, import CSV with a dry run, then for real. Check that row errors are shown.</Step>
+<Step>**Signals.** Simulate a signal and check that an agent run appears. Turn autopilot off, simulate, then Process pending.</Step>
+<Step>**Agent.** Approve a pending draft with edits (the run moves to completed). Reject one. Regenerate one. Create, disable and delete a playbook as admin.</Step>
+<Step>**Scoring.** Change the ICP weights, preview the tier changes, save, and check that accounts are re-scored.</Step>
+<Step>**Outreach.** Create a sequence, add, reorder and delete steps, enroll contacts (blocked contacts are flagged), change enrollment status, reply to an inbox message, suggest a reply, book a meeting (a deal is created or advanced).</Step>
+<Step>**Pipeline.** Drag a deal across stages, close it as won (the account becomes a customer and a notification appears), and sync to the CRM after connecting a CRM integration.</Step>
+<Step>**Integrations.** Connect with a key of at least 8 characters (only the masked key is shown), reorder the waterfall, disconnect.</Step>
+<Step>**Settings.** Invite a teammate, open the invite link in a private window, accept, then sign in as that user. Change their role, then remove them. Create and revoke an API key. Change the password.</Step>
+<Step>**Roles.** Sign in as the demo viewer (`riley@<org domain>` / `Password123!`) and confirm that write actions are rejected.</Step>
+<Step>**Webhook.** `curl -X POST localhost:4000/api/v1/webhooks/signals -H "x-api-key: <secret>" -H "content-type: application/json" -d '{"type":"funding","domain":"<account domain>","title":"Raised","strength":80}'` should return 202.</Step>
+<Step>**Search** (⌘K) finds accounts, contacts, deals and sequences. **Analytics** switches between 30, 90 and 180 days and exports CSV.</Step>
+<Step>**API docs**: `http://localhost:4000/api/v1/docs` renders.</Step>
+</Steps>
+
+## CI recommendation
+
+There is no CI configuration in the repository yet. This GitHub Actions workflow runs the backend type-check and tests and the frontend checks on every push and pull request:
+
+```yaml title=".github/workflows/ci.yml (recommended)"
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run build
+
+  docs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - run: npm ci
+      - run: npm run build
+```
+
+Useful additions later:
+
+- A Playwright job that starts both apps (`npm run setup -- --demo && npm run dev`) and walks through the smoke checklist.
+- A Postgres service container once the Postgres driver exists, running `npm test` with `DB_DRIVER=postgres`.
+- `npm audit --omit=dev` and secret scanning. Keep `.env.example` placeholder-only, as described in [Auth and security](/docs/engineering/backend/auth-and-security#secrets-handling).

@@ -1,0 +1,112 @@
+---
+title: Personas
+description: The people SellEasy is built for, what they need, and how each maps to a product role.
+icon: Users
+---
+
+SellEasy serves the whole revenue team. The personas below describe each person's goals, pains, jobs-to-be-done and the screens they use most. Each persona maps to one of the four product roles (**Owner**, **Admin**, **Member**, **Viewer**), which control what they can change. See [Roles & permissions](/docs/product/roles-and-permissions).
+
+The demo dataset uses this same cast: Jordan Lee (Head of Sales, owner), Sam Rivera (RevOps Lead, admin), Taylor Brooks (AE, member), Casey Morgan (SDR, member), Riley Chen (Marketing Ops, viewer) and Alex Kim (SDR, invited).
+
+## Persona → role mapping
+
+| Persona | Typical role | Why |
+|---|---|---|
+| Head of Sales / CRO | **Owner** (or Admin) | Owns the workspace and plan. Needs full visibility and final say. |
+| RevOps | **Admin** | Changes the ICP, playbooks, integrations, mailboxes, team and API keys. |
+| SDR | **Member** | Works accounts, approves drafts, runs sequences and handles replies. |
+| AE | **Member** | Manages deals and accounts. Books meetings. |
+| Marketing Ops / analyst | **Viewer** | Reads signals, analytics and attribution. Changes nothing. |
+| Workspace admin / owner | **Owner** / **Admin** | Handles seats, plans, invites, keys and resets. |
+
+## Head of Sales / CRO
+
+**Product role:** Owner (usually the person who created the workspace)
+
+- **Goals:** hit the number, grow pipeline coverage, get reps to spend time on the right accounts, and prove what the agent contributes.
+- **Pains:** can't see which accounts are heating up. Forecast relies on rep updates. Hard to tell whether outbound tooling produces anything.
+- **Jobs-to-be-done:**
+  - "Show me at a glance how much open and weighted pipeline we have and what the agent did today."
+  - "Tell me what share of new pipeline the agent sourced."
+  - "Show me which reps are winning and which tiers convert."
+- **Key screens:** [Dashboard](/docs/product/features/dashboard), [Pipeline](/docs/product/features/pipeline), [Analytics](/docs/product/features/analytics), Agent activity.
+- **Owner-only actions:** change plan and seats, reset the workspace (development only).
+
+## RevOps
+
+**Product role:** Admin
+
+- **Goals:** a clean, de-duplicated account base, a trustworthy scoring model, and automation that reflects the sales process.
+- **Pains:** duplicate records from many imports, scoring changes with unknown impact, too many vendor tools to manage, and hand-built routing rules.
+- **Jobs-to-be-done:**
+  - "Import our TAM from a spreadsheet without creating duplicates."
+  - "Change the ICP and see how tiers shift before I commit."
+  - "Write a playbook: when a Tier A/B account visits pricing, route it, draft an email and alert the owner."
+  - "Connect Clearbit and Apollo and set which one we try first."
+  - "Create an API key so our warehouse or Zapier can push signals."
+- **Key screens:** [ICP & scoring](/docs/product/features/icp-scoring), [Agent → Playbooks](/docs/product/features/orchestration-agent), [Integrations](/docs/product/features/integrations), [Data import](/docs/product/features/data-import), Accounts → Duplicates, [Settings](/docs/product/features/settings) (Team, API keys), Outreach → Mailboxes.
+
+## SDR
+
+**Product role:** Member
+
+- **Goals:** book meetings. Work the hottest accounts first. Send relevant messages quickly.
+- **Pains:** static lists, generic templates, researching every account by hand, and missing the moment when an account shows interest.
+- **Jobs-to-be-done:**
+  - "Show me the Tier A accounts assigned to me, ranked by intent."
+  - "Give me a draft that references the signal, let me tweak it and send it."
+  - "Put these contacts into the right sequence and skip the ones that bounced."
+  - "When someone replies positively, let me reply and book the meeting in one click."
+- **Key screens:** [Accounts](/docs/product/features/accounts) (My accounts tab), Agent → Approvals, [Outreach](/docs/product/features/outreach) (Sequences, Inbox), [Contacts](/docs/product/features/contacts), [Signals](/docs/product/features/signals).
+- See the [daily SDR workflow](/docs/product/user-journeys#c-daily-sdr-workflow).
+
+## AE (Account Executive)
+
+**Product role:** Member
+
+- **Goals:** move qualified opportunities to close and keep the CRM accurate without double entry.
+- **Pains:** meetings arrive without context, deal updates have to be typed into the CRM, and the forecast drifts.
+- **Jobs-to-be-done:**
+  - "When a meeting is booked, give me a deal with the account's context and signal history."
+  - "Let me drag deals across stages and have the probability update."
+  - "Push my changes to the CRM."
+- **Key screens:** [Pipeline](/docs/product/features/pipeline) (board and deal sheet), account detail (Signals, Deals and Activity tabs), Outreach → Inbox.
+
+## Marketing Ops / analyst
+
+**Product role:** Viewer (read-only; viewers can still use the ICP what-if preview, which saves nothing)
+
+- **Goals:** understand which channels and signals produce pipeline and report on funnel conversion.
+- **Pains:** attribution models that credit only the last touch, and data spread across many tools.
+- **Jobs-to-be-done:**
+  - "Which signal types appear before deals that close?"
+  - "What is our source mix and funnel conversion over the last 90 days?"
+  - "Export the deals created this quarter as CSV."
+- **Key screens:** [Analytics](/docs/product/features/analytics), [Signals](/docs/product/features/signals), [Dashboard](/docs/product/features/dashboard).
+
+## Workspace admin / owner
+
+**Product role:** Owner or Admin
+
+- **Goals:** manage access safely, stay within the seat limit, and keep credentials secure.
+- **Jobs-to-be-done:**
+  - "Invite a new SDR and share their join link."
+  - "Change someone's role or remove a leaver. Their accounts become unassigned and their deals and sequences move to me."
+  - "Rotate a vendor API key, or revoke a leaked SellEasy API key."
+- **Key screens:** [Settings](/docs/product/features/settings) (Organization, Team, API keys), [Integrations](/docs/product/features/integrations).
+
+## Screen usage matrix
+
+| Screen | Head of Sales | RevOps | SDR | AE | Mktg Ops |
+|---|:-:|:-:|:-:|:-:|:-:|
+| Dashboard | ●●● | ●● | ●● | ●● | ●● |
+| Accounts / Contacts | ●● | ●●● | ●●● | ●●● | ● |
+| Signals | ● | ●● | ●● | ● | ●●● |
+| ICP & Scoring | ● | ●●● | ● | ● | ● |
+| Agent (Activity / Approvals / Playbooks) | ●● | ●●● | ●●● | ● | ● |
+| Outreach | ● | ●● | ●●● | ●● | ● |
+| Pipeline | ●●● | ●● | ● | ●●● | ● |
+| Analytics | ●●● | ●● | ● | ● | ●●● |
+| Integrations / Settings | ● | ●●● | – | – | – |
+
+●●● = daily core workflow · ●● = regular · ● = occasional

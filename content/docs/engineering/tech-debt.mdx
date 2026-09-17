@@ -1,0 +1,214 @@
+---
+title: Tech debt and follow-ups
+description: Known gaps, simplifications and mocked components in SellEasy, prioritized, with a suggested approach for each.
+icon: ListTodo
+---
+
+SellEasy's first backend iteration (`plan.md` phases 1–7) deliberately built **interfaces, env keys and mocks** for infrastructure and vendors, and deferred the real implementations. This page lists every known gap found in the code, grouped by area and ranked by priority.
+
+**Priority key.** **P0**: blocks a real production launch. **P1**: needed soon after launch, or for correctness at scale. **P2**: quality, performance or developer-experience improvement. **P3**: nice to have.
+
+## Summary
+
+| # | Item | Priority | Area | Effort |
+|---|---|---|---|---|
+| 1 | Postgres driver | P0 | Data | L |
+| 2 | Real vendor adapters (LLM, email, CRM, enrichment) | P0 | Providers | L |
+| 3 | Sequence step scheduler / sending engine | P0 | Outreach | L |
+| 4 | Invite emails and invite expiry | P0 | Auth | S |
+| 5 | Remove signal simulation | P0 (before launch) | Signals | S |
+| 6 | Event bus and async agent processing | P1 | Architecture | M |
+| 7 | JSON driver limits (single process, no transactions) | P1 (until 1 ships) | Data | — |
+| 8 | Periodic intent re-scoring | P1 | Scoring | S |
+| 9 | Inbound reply ingestion | P1 | Outreach | M |
+| 10 | Webhook signatures and API key scopes | P1 | Security | S |
+| 11 | Session hardening, SSO | P1 | Auth | M |
+| 12 | Analytics computed on every request | P1 | Analytics | M |
+| 13 | Sequence stats and per-status enrollment counts | P1 | Outreach | S |
+| 14 | Deliverability alerts derived in the frontend | P2 | Outreach | S |
+| 15 | Notification preferences not honoured | P2 | Notifications | S |
+| 16 | Integration sync and sync log are simulated | P2 | Integrations | M |
+| 17 | Synthetic sequence step performance | P2 | Outreach | M |
+| 18 | Dangling references after deletes | P2 | Data integrity | S |
+| 19 | Agent run status ignores some step failures | P3 | Agent | S |
+| 20 | Implicit playbook priority | P2 | Agent | S |
+| 21 | Encryption key rotation | P2 | Security | S |
+| 22 | Search is a substring scan | P2 | Search | M |
+| 23 | OpenAPI lacks response schemas; hand-copied frontend types | P2 | DX | M |
+| 24 | Test coverage, CI, containers | P2 | DX / Ops | M |
+| 25 | Observability (Sentry, Datadog, metrics) | P2 | Ops | S |
+| 26 | Config schema incomplete; per-process rate limits | P2 | Ops | S |
+| 27 | Small correctness nits | P3 | Various | S |
+
+## P0: launch blockers
+
+<Accordions>
+<Accordion title="1 · Postgres driver">
+**Today.** `src/db/postgres/postgres-repository.ts` throws. `DB_DRIVER=postgres` makes the API fail at startup, and `migrations/` is empty.
+
+**Why it matters.** The JSON driver ties the API to one process and one disk, and has no transactions (see #7).
+
+**Approach.**
+- Implement `createPostgresRepository` using the translation table in [Data layer](/docs/engineering/backend/data-layer#implementing-the-postgres-driver). Start with a jsonb document table per collection.
+- Add a transaction API for the cascades.
+- Add a unique index on `lower(email)` for users and on `hash` for API keys.
+- Run the API test suite against Postgres in CI.
+- Write a JSON → Postgres migration script (see [Deployment](/docs/engineering/deployment#backups-while-on-the-json-driver)).
+</Accordion>
+<Accordion title="2 · Real vendor adapters">
+**Today.** Everything in `providers/index.ts` is a mock. Setting `*_PROVIDER` to anything else just logs a warning.
+- Emails are never sent.
+- Drafts come from templates.
+- CRM ids are random.
+- Enrichment adds one hard-coded technology.
+- The connection test only checks that the key has at least 8 characters.
+- `LINKEDIN_PROVIDER` has no interface at all, so LinkedIn drafts are "sent" through the email provider.
+- Per-org credentials (`apiKeyEncrypted`) are never decrypted or used.
+
+**Approach.**
+- Add a factory per provider, keyed by env (see [Events and providers](/docs/engineering/backend/events-and-providers#implementing-a-real-adapter)).
+- Extend the interfaces with `orgId` so adapters can use per-org credentials.
+- Add a `LinkedInProvider`.
+- Priority order: LLM (Anthropic), then email (SES), then CRM (HubSpot), then the enrichment waterfall.
+</Accordion>
+<Accordion title="3 · Sequence step scheduler">
+**Today.**
+- `plan.md` §11 puts background job scheduling out of scope.
+- Enrollments are created with `currentStep: 0` and `nextStepAt = now`, and **never advance**.
+- `SequenceSettings` (`sendDays`, `startHour`, `endHour`, `timezone`, `stopOnReply`, `trackOpens`) are stored but unused.
+- `Mailbox.sentToday` never increments, and `dailyLimit` is never enforced.
+
+**Approach.**
+- Run a scheduler every minute (EventBridge Scheduler or a worker loop). It selects `active` enrollments with `nextStepAt ≤ now` inside the send window and enqueues one job per step on `SQS_OUTREACH_QUEUE_URL`.
+- The worker renders the step, picks a mailbox from `mailboxIds` (round robin, respecting `dailyLimit`), sends through the email or LinkedIn provider, updates `currentStep`, `nextStepAt` (the next step's `dayOffset`), `stats.sent` and `sentToday`, and logs an activity.
+- `wait` steps just move `nextStepAt`. `call` steps create tasks.
+- After the last step, mark the enrollment `completed`.
+- Reset `sentToday` daily.
+</Accordion>
+<Accordion title="4 · Invite emails and expiry">
+**Today.** `POST /users/invite` and `resend-invite` return `inviteToken` in the response, and the UI shows a copyable link. No email is sent. Tokens never expire.
+
+**Approach.**
+- Send the link (`<web origin>/login?invite=<token>`) through the email provider (SES), and stop returning the token outside development.
+- Store `inviteExpiresAt` (for example 7 days) and check it in `acceptInvite`.
+- Consider storing only a hash of the token.
+</Accordion>
+<Accordion title="5 · Remove signal simulation">
+**Today.** `POST /signals/simulate` and the "Simulate signal" button exist for demos, behind `ENABLE_SIMULATION`. `plan.md` decision F says to remove them once real vendor signals flow.
+
+**Approach.** Set `ENABLE_SIMULATION=false` in production now. Once the webhook and intent adapters are live, delete `signalService.simulate`, `SIM_TEMPLATES`, the route, the `features.simulation` flag and the UI button.
+</Accordion>
+</Accordions>
+
+## P1: soon after launch
+
+<Accordions>
+<Accordion title="6 · Event bus and async agent processing">
+**Today.**
+- `MemoryEventBus` has **no subscribers**, and `draft.approved` is declared but never published.
+- The agent runs synchronously inside `signalService.ingest`. Webhook batches of up to 100 signals are processed one at a time within one HTTP request, including LLM calls once they are real.
+- `EVENT_BUS_DRIVER` other than `memory` falls back to memory.
+
+**Approach.**
+- Implement an EventBridge `EventBus` with an outbox.
+- Add an SQS worker that calls `processSignal` idempotently.
+- Return `202` with `run: null`.
+- Publish `draft.approved` from `approveDraft`.
+
+See [Orchestration agent](/docs/engineering/backend/orchestration-agent#moving-to-eventbridge--sqs--step-functions).
+</Accordion>
+<Accordion title="7 · JSON driver limits">
+**Today.** The JSON driver:
+- keeps whole collections in memory and rewrites a whole file on every write;
+- supports a single process only, with the cache never refreshed from disk;
+- has no cross-collection transactions (cascades can half-apply);
+- doesn't clone write inputs;
+- stays broken after a corrupt file until the process restarts.
+
+**Approach.** Replace it with Postgres (#1). Until then: run exactly one instance, keep backups, keep collections small (notifications are already capped at 200 per org), and prefer `createMany`/`updateMany`. Optional hardening: `structuredClone` inputs in `build()`/`update()`, and reset `loading` on parse failure.
+</Accordion>
+<Accordion title="8 · Periodic intent re-scoring">
+**Today.** Intent decays with time (a 14-day half-life, cut off at 42 days), but scores are only recomputed on triggers such as signal processing, edits, ICP saves and imports. Stored `intentScore`, `score` and `tier` go stale, so dashboards and playbook thresholds use outdated values. Ingesting with autopilot off, or deleting a signal, doesn't re-score either.
+
+**Approach.**
+- Run a nightly (or hourly) `scoringService.rescoreAll(orgId, "Scheduled decay")` for each org.
+- Consider a variant that skips the history entry when nothing changed, because history is capped at 20 entries.
+- Re-score on signal delete.
+</Accordion>
+<Accordion title="9 · Inbound reply ingestion">
+**Today.** `inbox_messages` are only created by the demo seed. There is no inbound path, so reply sentiment, `stopOnReply` and `replied` statuses never happen organically.
+
+**Approach.**
+- Ingest replies from SES inbound (S3 + SNS), or through Instantly/Mailpool webhooks.
+- Match them to the contact and sequence.
+- Classify sentiment with the LLM (`ANTHROPIC_FAST_MODEL`).
+- Stop enrollments when `stopOnReply` is set.
+- Update `stats.replied` and notify (`kind: "reply"`).
+</Accordion>
+<Accordion title="10 · Webhook signatures and API key scopes">
+**Today.** `POST /webhooks/signals` authenticates only with an API key. `RB2B_WEBHOOK_SECRET` and `TRIGIFY_WEBHOOK_SECRET` are unused. Six of the seven `API_SCOPES` are assignable but no route checks them, because JWT routes don't accept API keys.
+
+**Approach.**
+- Add vendor-specific webhook routes that verify HMAC signatures.
+- Either expose read/write routes to API keys (`auth: "apiKey"` with `scope`), or trim the scope list to what is actually enforced.
+</Accordion>
+<Accordion title="11 · Session hardening and SSO">
+**Today.**
+- Stateless 7-day JWTs stored in localStorage.
+- No refresh tokens, revocation, MFA or lockout.
+- `AUTH_DRIVER=cognito` and the SSO env keys are unused. `plan.md` expects SSO buttons to appear only with Cognito.
+
+**Approach.**
+- Short-lived access tokens plus a refresh token in an httpOnly cookie, with a server-side revocation list (Redis).
+- A Cognito driver that verifies Cognito JWTs and maps `sub` to users.
+- Enforce password strength.
+</Accordion>
+<Accordion title="12 · Analytics computed on every request">
+**Today.** `analyticsService.dashboard` and `overview`, `signalService.stats`, `agentService.stats`, `pipelineService.stats` and `outreachService.stats` load whole collections and aggregate in JS on every request. Nothing is cached.
+
+**Approach.**
+- Short term: Redis cache keyed by `(orgId, endpoint, range)` with `CACHE_TTL_SECONDS`, invalidated on writes or by events.
+- Long term: SQL aggregates on Postgres, then warehouse-backed analytics (`ANALYTICS_WAREHOUSE_URL`) fed by the event stream.
+</Accordion>
+<Accordion title="13 · Sequence stats and per-status enrollment counts">
+**Today.**
+- `Sequence.stats` is a stored counter object. Only `enrolled` (on enroll) and `meetings` (on book-meeting) are ever incremented, and nothing ever decrements.
+- Removing or completing enrollments doesn't change `stats.enrolled`.
+- `sent`, `opened`, `replied` and `bounced` stay at their seeded values.
+- Lists show `activeEnrollments`, which is counted live, but there is no per-status breakdown (paused, completed, replied, bounced, unsubscribed).
+
+**Approach.**
+- Compute enrollment counts per status with a grouped count (`GROUP BY status` in Postgres) and return `enrollmentCounts` on the sequence list and detail.
+- Keep delivery stats as event-driven counters from the sending engine (#3) and inbound ingestion (#9), or derive them from an `outreach_events` table.
+</Accordion>
+</Accordions>
+
+## P2: quality and scale
+
+| # | Item | Today | Suggested approach |
+|---|---|---|---|
+| 14 | **Deliverability alerts derived in the frontend** | `frontend/src/components/outreach/mailboxes-tab.tsx` computes the alerts client-side: health below 80, warm-up off, at least 85 % of the daily limit, more than 100/day on non-SES mailboxes. `healthScore` is static (new mailboxes get 70) and `status` never changes automatically. | Move the rules to a backend `mailboxHealth` service (`GET /mailboxes/alerts`). Compute `healthScore` from bounce, complaint and warm-up data from the provider. Auto-pause unhealthy mailboxes and create `system` notifications. |
+| 15 | **Notification preferences not honoured** | `user_preferences` is stored but never read. Notifications are org-wide, with no recipient. Slack posts go to one global webhook (production only), and nothing sends email. | Add `userId` / audience to notifications. Filter by `notifications.*` flags. Route to channels (`inApp`, `email`, `slack`) through SNS or email adapters. |
+| 16 | **Integration sync is simulated** | `integrationService.sync` bumps `lastSyncAt` and adds random usage. `buildSyncLog` synthesizes five history entries from `lastSyncAt`. Demo "connected" integrations have no stored credential. | Persist real sync jobs (a `sync_runs` collection) with outcome, counts and duration. Run them through the adapters on `settings.syncInterval`. Serve the real log. |
+| 17 | **Synthetic sequence step performance** | `outreachService.performance` splits the sequence totals across email steps with fixed decay weights (0.72, 0.9, 0.85). LinkedIn and call rows use fixed ratios. | Record per-step events (sent, opened, replied, accepted, connected) from the sending engine, and aggregate them per step. |
+| 18 | **Dangling references after deletes** | Deleting a contact leaves `contactId` on signals, deals and activities. Deleting a deal leaves its activities. Deleting a signal leaves its runs and doesn't re-score. Deleting a playbook leaves `ruleId` on runs. Inbox messages keep a deleted `sequenceId`. | Decide per relation: cascade, null out, or keep for history. Implement it in services, or with FKs (`ON DELETE SET NULL`) in Postgres. Expansion helpers already tolerate missing records. |
+| 19 | **Agent run status ignores some step failures** | `failed` already takes precedence over `awaiting_approval`, but `route_owner` and `draft_outreach` failures don't mark the run failed. | Derive status from the steps at the end: any `failed` → `failed` (or a new `partial`), else any `pending` → `awaiting_approval`, else `completed`. Recompute it the same way in `resolveRunStep`. |
+| 20 | **Implicit playbook priority** | The first match wins, in storage order. The UI lists playbooks by `createdAt`, and there is no way to reorder them. | Add a `priority` field with ordering in the UI, sort candidates explicitly, and optionally allow several matching playbooks per signal. |
+| 21 | **Encryption key rotation** | A single `ENCRYPTION_KEY`, no key id in the payload. `decrypt` is unused. | Prefix payloads with a key id (`v1.iv.tag.ct`), support a keyring, and add a re-encryption script. Alternatively use KMS envelope encryption. |
+| 22 | **Search is a substring scan** | `GET /search` runs four `list()` scans with `contains`. `SEARCH_DRIVER` is unused. | Postgres `pg_trgm` indexes first, then OpenSearch indexing from domain events. |
+| 23 | **OpenAPI lacks response schemas; hand-copied types** | `buildOpenApi` only documents request schemas. `frontend/src/lib/types.ts` duplicates `backend/src/domain/types.ts` by hand. | Add a `response` zod schema to `RouteDef` and emit it. Generate frontend types from the spec (`openapi-typescript`), or move the shared types into a workspace package. |
+| 24 | **Tests, CI, containers** | 14 API tests cover the main flows only (see [Testing](/docs/engineering/testing#not-covered-yet)). No frontend tests, no CI workflow, no Dockerfile or IaC (`plan.md` §11). | Add engine unit tests and per-module API tests, a Playwright smoke suite, the GitHub Actions workflow from the testing page, and the Dockerfile and compose files from [Deployment](/docs/engineering/deployment). Add Terraform or CDK for AWS later. |
+| 25 | **Observability** | pino only. `SENTRY_DSN` and `DD_*` are unused, and there are no metrics or tracing. | Initialize `@sentry/node` and `dd-trace` in `server.ts`. Emit business metrics (runs by status, pending drafts, unprocessed signals). Set up alerts on the fallback warnings. |
+| 26 | **Config and rate limits** | Many `.env.example` keys (`PG*`, `ANTHROPIC_MAX_TOKENS`, vendor keys) aren't in the `config.ts` schema. `config.ts` accepts the placeholder secrets. The rate-limit store is per-process, and `trust proxy` is hard-coded to 1. | Add keys to the schema as their drivers land. Reject known placeholder values when `NODE_ENV=production`. Use a Redis rate-limit store. Make `TRUST_PROXY` configurable. |
+
+## P3: small correctness nits
+
+- The `OutreachDraft.status` value `"approved"` is never used. Approval goes straight to `sent`. Remove it or introduce a real approve-then-schedule step.
+- Contact email uniqueness is checked on **create** only. `PATCH /contacts/:id` can create duplicates.
+- `POST /signals/:id/process` re-processes already-processed signals and creates duplicate runs and actions. Add a `force` flag or refuse.
+- `computeIntent` gives more than full weight to signals with a future `occurredAt`. Clamp the age to at least 0, or reject future timestamps on ingest.
+- `nextOwner` counts duplicate accounts toward seller load, and ignores seller capacity and territory.
+- `bestContact` ignores `emailStatus`, so drafts can target invalid emails that enrollment would then skip.
+- Import uploads are sent as an inline JSON string, limited by `IMPORT_MAX_BYTES` and a doubled body limit. Move large imports to S3 presigned uploads (`S3_BUCKET`, `S3_IMPORTS_PREFIX`) with async processing.
+- Seeding demo data doesn't check seat limits, and the demo integrations appear connected without credentials.
+- `bootstrap` prints the admin password to stdout.

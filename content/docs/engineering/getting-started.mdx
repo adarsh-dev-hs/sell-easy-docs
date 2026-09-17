@@ -1,0 +1,200 @@
+---
+title: Getting started
+description: Install SellEasy, generate its configuration, and run the API and web app on your machine.
+icon: Rocket
+---
+
+This guide takes a fresh clone to a signed-in workspace. You run both apps from the repo root. The API listens on port **4000** and the web app on port **3000**.
+
+## Prerequisites
+
+| Tool | Version | Notes |
+|---|---|---|
+| Node.js | **20 or newer** (`backend/package.json` sets `"engines": { "node": ">=20" }`) | The team develops on Node 26 |
+| npm | The version that ships with your Node | The repo uses npm and `package-lock.json` in each app |
+| Git | Any recent version | See [Repository structure](/docs/engineering/repository-structure) for how the git repos are laid out |
+
+You don't need a database, Docker or any cloud account. Data is stored in JSON files, and every vendor integration is mocked.
+
+## Set up
+
+<Steps>
+<Step>
+
+### Clone and install
+
+```bash
+git clone <repo-url> sell-easy
+cd sell-easy
+npm run install:all
+```
+
+`install:all` runs `npm install` in three places: the repo root (which only installs `concurrently`), `backend/` and `frontend/`.
+
+</Step>
+<Step>
+
+### Generate configuration and bootstrap the database
+
+```bash
+npm run setup              # empty workspace
+# or
+npm run setup -- --demo    # workspace pre-filled with the demo dataset
+```
+
+</Step>
+<Step>
+
+### Start both apps
+
+```bash
+npm run dev
+```
+
+This uses `concurrently` to start `api` (blue, `tsx watch src/server.ts`) and `web` (magenta, `next dev`). Press `Ctrl+C` to stop both.
+
+</Step>
+<Step>
+
+### Sign in
+
+Open [http://localhost:3000](http://localhost:3000). It redirects you to `/login`. Sign in with the `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` values from `backend/.env`. With the defaults from `.env.example` those are `admin@example.com` / `ChangeMe123!`.
+
+If you ran setup with `--demo`, you can also sign in as the demo teammates. Their emails are `<name>@<BOOTSTRAP_ORG_DOMAIN>` and their password is `Password123!`. The seed script prints the exact list.
+
+</Step>
+</Steps>
+
+## What `npm run setup` does
+
+`scripts/setup.mjs` is safe to run more than once:
+
+1. **`backend/.env`**: if the file doesn't exist, setup copies `backend/.env.example` and replaces `JWT_SECRET` and `ENCRYPTION_KEY` with fresh 32-byte hex secrets. If the file exists, setup leaves it alone.
+2. **`frontend/.env.local`**: if the file doesn't exist, setup copies `frontend/.env.example`, which sets `NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1`.
+3. **The database**, which depends on the flag:
+   - Without `--demo`, setup runs `npm --prefix backend run bootstrap`. That creates the organization and owner from the `BOOTSTRAP_*` variables, the default ICP and the integration catalog (19 vendors, all disconnected). If the admin email already exists, it does nothing.
+   - With `--demo`, setup runs `npm --prefix backend run seed:demo`. That creates the bootstrap org if needed and then **replaces** its business data with the demo dataset: accounts, contacts, signals, playbooks, runs, drafts, sequences, mailboxes, inbox, deals and teammates.
+
+<Callout type="info" title="Review the BOOTSTRAP_* values">
+Edit `BOOTSTRAP_ORG_NAME`, `BOOTSTRAP_ORG_DOMAIN`, `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` in `backend/.env` **before** you bootstrap. After that, the admin already exists and bootstrap won't change it. To start over, use `npm --prefix backend run db:reset`.
+</Callout>
+
+## Ports and CORS
+
+| App | URL | Where it's set |
+|---|---|---|
+| API | `http://localhost:4000/api/v1` | `PORT` and `API_PREFIX` in `backend/.env` |
+| Web | `http://localhost:3000` | Next.js default |
+| Docs | `http://localhost:3002` | `docs/package.json` (`next dev -p 3002`) |
+
+<Callout type="warn" title="Next.js moves to port 3001 when 3000 is busy">
+If another process is already using port 3000, `next dev` starts on **3001** instead. The API only accepts browser requests from origins listed in `CORS_ORIGINS`. The default is `http://localhost:3000,http://localhost:3001`. If the web app ends up on any other port, add that origin to `CORS_ORIGINS` and restart the API. Otherwise every request fails with a CORS error, and the UI reports "Cannot reach the API".
+</Callout>
+
+## Running the apps separately
+
+<Tabs items={['API only', 'Web only', 'Production build']}>
+<Tab value="API only">
+
+```bash
+cd backend
+npm run dev          # tsx watch → http://localhost:4000/api/v1
+npm run typecheck    # tsc --noEmit
+npm test             # vitest + supertest (uses a temp DATA_DIR)
+```
+
+</Tab>
+<Tab value="Web only">
+
+```bash
+cd frontend
+npm run dev          # http://localhost:3000 (start the API first)
+npm run lint         # eslint (next core-web-vitals + typescript)
+```
+
+The web app reads `NEXT_PUBLIC_API_URL` from `frontend/.env.local`. To use an API running somewhere else, change that value and restart `next dev`, because `NEXT_PUBLIC_*` values are inlined when the app is built.
+
+</Tab>
+<Tab value="Production build">
+
+```bash
+npm run build        # backend: tsc → dist/, frontend: next build
+npm start            # node dist/server.js + next start
+```
+
+</Tab>
+</Tabs>
+
+## Useful URLs
+
+| URL | What it is |
+|---|---|
+| [http://localhost:4000/health](http://localhost:4000/health) | Liveness check. It sits outside `/api/v1`, isn't rate-limited, and doesn't need auth. |
+| [http://localhost:4000/api/v1/docs](http://localhost:4000/api/v1/docs) | Swagger UI for all 139 operations. Click **Authorize** and paste a JWT to try requests. |
+| [http://localhost:4000/api/v1/openapi.json](http://localhost:4000/api/v1/openapi.json) | OpenAPI 3.1 document, generated from the route definitions |
+| [http://localhost:3000/login](http://localhost:3000/login) | Sign in, create a workspace, or accept an invite (`?invite=<token>`) |
+| [http://localhost:3002/docs](http://localhost:3002/docs) | This documentation site |
+
+```bash
+curl -s http://localhost:4000/health
+# {"status":"ok","env":"development","db":"json","uptime":948}
+```
+
+## Running the docs site
+
+```bash
+cd docs
+npm install
+npm run dev          # http://localhost:3002
+```
+
+Pages are MDX files in `docs/content/docs/`. The sidebar order comes from each folder's `meta.json`. See [Contributing](/docs/engineering/contributing#updating-the-docs).
+
+## Common first tasks
+
+<Accordions>
+<Accordion title="Get a token and call the API from the terminal">
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:4000/api/v1/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"admin@example.com","password":"ChangeMe123!"}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).data.token')
+
+curl -s "http://localhost:4000/api/v1/accounts?pageSize=5&sort=score:desc" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+</Accordion>
+<Accordion title="Load real data instead of the demo dataset">
+
+Go to **Accounts → Import** or **Contacts → Import** and upload a CSV or JSON file. You can also call `POST /import/accounts` and `POST /import/contacts` directly. Rows are validated, deduplicated and scored. See [Import API](/docs/engineering/api/import).
+
+</Accordion>
+<Accordion title="Push signals from a vendor or script">
+
+Create an API key with the `signals:write` scope in **Settings → API keys**, then send `POST /api/v1/webhooks/signals` with the `x-api-key` header. See [Signals and webhooks](/docs/engineering/api/signals-and-webhooks#vendor-integration-recipe).
+
+</Accordion>
+<Accordion title="Watch the agent run end to end">
+
+Click **Simulate signal** in the app header. This needs `ENABLE_SIMULATION=true`. The API picks a high-fit account, ingests a realistic signal and, if autopilot is on, runs the orchestration agent. The toast links to the run's step timeline at `/agent?run=<id>`.
+
+</Accordion>
+<Accordion title="Invite a teammate">
+
+Go to **Settings → Team → Invite**. The app doesn't send invite emails yet, so the UI shows a copyable `/login?invite=<token>` link to share instead.
+
+</Accordion>
+</Accordions>
+
+## Resetting data
+
+| Command | Effect |
+|---|---|
+| `npm run seed:demo` (root) or `npm --prefix backend run seed:demo` | Replaces the bootstrap org's **business data** with the demo dataset. Keeps the org, users and API keys. |
+| `npm --prefix backend run db:reset` | Deletes **everything** in `DATA_DIR` (all orgs and users), then runs bootstrap again. It asks you to type `reset` first; pass `-- --yes` to skip the prompt. It refuses to run when `NODE_ENV=production`. |
+| **Reset workspace** in the user menu (owner only) or `POST /admin/reset` | Wipes the current org's business data from inside the running API. You can reload the demo data at the same time. Disabled in production and when `ENABLE_ADMIN_RESET=false`. |
+
+<Callout type="error" title="Restart the API after a script changes the data files">
+While the API runs, it keeps every collection in memory. The seed and reset scripts run in a separate process and write straight to the JSON files, so a running API keeps serving the old data until you restart it. `npm run dev` doesn't restart the API when `db/*.json` changes. The in-app **Reset workspace** action doesn't have this problem because it runs inside the API.
+</Callout>

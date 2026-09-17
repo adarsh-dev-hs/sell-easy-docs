@@ -1,0 +1,126 @@
+---
+title: Analytics
+description: Pipeline created, revenue won, reply rate, agent-sourced share, attribution by signal, funnel, tier performance, sequence and rep tables, source mix, and CSV export, with exact definitions.
+icon: ChartColumn
+---
+
+The **Analytics** screen (`/analytics`) answers "is our agentic GTM motion working?". It covers a selectable date range and is calculated by the API (`GET /analytics/overview?days=30|90|180`) from current records. Every definition below comes from the analytics service.
+
+**Who uses it:** Head of Sales, Marketing Ops, RevOps.
+
+## Date range semantics
+
+Choose **Last 30 days**, **Last 90 days** (default) or **Last 180 days**. The cutoff is *now − N × 24 h*. Each object type is placed in the range by a different date:
+
+| Object | Counted in range when… |
+|---|---|
+| Deals (pipeline created, attribution, tiers, weekly chart, export) | `createdAt` ≥ cutoff |
+| Won deals (revenue won, rep wins) | stage is **Closed won** and `closeDate` ≥ cutoff |
+| Accounts (funnel) | `createdAt` ≥ cutoff, excluding flagged duplicates |
+| Signals (source mix, signal count) | `occurredAt` ≥ cutoff |
+| Sequences (reply rate, meetings, sequence table) | **All-time** stats, whatever the range |
+
+<Callout type="info">Reply rate and meetings booked don't change with the date range, because sequence stats are lifetime totals.</Callout>
+
+## KPI cards
+
+| Card | Definition |
+|---|---|
+| **Pipeline created** | Σ amount of deals created in range, in any stage. The hint shows the number of deals created. |
+| **Revenue won** | Σ amount of Closed won deals with a close date in range. The hint shows the count. |
+| **Reply rate** | Σ replied ÷ Σ sent across all sequences (all-time). The hint shows total replies. |
+| **Meetings booked** | Σ `meetings` across all sequences (all-time) |
+| **Agent-sourced pipeline** | Agent pipeline ÷ pipeline created, where agent pipeline = Σ amount of in-range deals whose `source` starts with "Agent". The hint shows the dollar amount. 0% when no pipeline was created. |
+
+## Charts and tables
+
+### Pipeline created (weekly)
+
+A stacked bar per **week**. Weeks start on **Sunday 00:00 UTC**, from the week containing the cutoff through the current week. Each deal created in range goes into one bucket:
+
+| Bucket | Rule |
+|---|---|
+| **Agent-sourced** | `source` starts with "Agent" |
+| **Sequence reply** | `source` = "Sequence reply" (from **Book meeting**) |
+| **Inbound / referral / manual** | Everything else, for example "Manual" |
+
+### Attribution by signal
+
+For each of the eight signal types: the **pipeline and number of deals** created in range on accounts that had **at least one signal of that type before the deal was created**. The bars are sorted by amount.
+
+<Callout type="warn">This is multi-touch attribution. A deal counts toward **every** signal type its account showed beforehand, so the bars can add up to more than *Pipeline created*.</Callout>
+
+### Funnel
+
+Starts from **accounts created in range** (excluding duplicates):
+
+| Step | Accounts counted |
+|---|---|
+| **Accounts** | All accounts created in range |
+| **Engaged** | Stage is *engaged*, *opportunity* or *customer*, **or** the account has any deal |
+| **Opportunities** | The account has any deal, created at any time |
+| **Won** | The account has a Closed won deal, at any time |
+
+Each bar is labelled with its count and its **conversion from the previous step** (count ÷ previous count). The first step is 100%.
+
+### Tier performance
+
+For each tier A–D, using each account's **current** tier (non-duplicates):
+
+| Column | Definition |
+|---|---|
+| Accounts | Accounts currently in the tier |
+| Deals | Deals **created in range** on those accounts |
+| Win rate | won ÷ (won + lost) among those deals. "—" when none are closed. |
+| Avg deal | Won amount ÷ number of won deals ("—" when there are none) |
+| Chart | **Pipeline created** (Σ amount of those deals) vs **Won** (Σ amount of the won ones) |
+
+### Sequence performance
+
+All sequences, **ranked by reply rate**. Columns: status, enrolled, sent, open rate (opened ÷ sent), reply rate (replied ÷ sent), meetings per reply (meetings ÷ replied) and meetings. These are all-time values.
+
+### Rep leaderboard
+
+Every **non-viewer** user (including invited ones), ranked by **won amount** and then by **open pipeline**:
+
+| Column | Definition |
+|---|---|
+| Accounts | Non-duplicate accounts currently owned |
+| Open pipeline | Σ amount of the rep's open deals, whatever the range |
+| Won | Σ amount of Closed won deals they own with a close date in range |
+| Deals won | Count of those deals |
+
+The top rep gets a highlighted **1** badge if they have won anything.
+
+### Signal source mix
+
+A donut chart of signals in range by `source`: the **top 4** sources, with the rest grouped as **Other**. The subtitle shows the total number of signals ingested in range.
+
+## Export
+
+**Export CSV** downloads `selleasy-deals-<days>d-<date>.csv` with every deal **created in range**, newest first, and reports how many rows were exported.
+
+| Column | Content |
+|---|---|
+| Deal ID, Deal, Account, Tier | Tier is the account's current tier |
+| Stage, Amount, Probability, Weighted | Weighted = round(amount × probability ÷ 100) |
+| Close date, Owner, Source | |
+| CRM ID, Synced | Synced is *yes* or *no* |
+| Created, Updated | Dates in YYYY-MM-DD |
+
+## Permissions
+
+Every role can view analytics and export the CSV.
+
+## Limitations
+
+- Everything is calculated on request from the operational store. There is no warehouse, snapshots or historical trend of tiers. A Redshift warehouse is planned (`ANALYTICS_WAREHOUSE_URL`).
+- Tier performance uses **today's** tier, not the tier at the time the deal was created.
+- Sequence metrics depend on stored stats that the product doesn't update yet, apart from enrolled and meetings. See [Outreach](/docs/product/features/outreach).
+- There is no custom date range and no filter by owner or segment.
+
+## Related
+
+- [Metrics](/docs/product/metrics): every KPI in one place, plus suggested success metrics.
+- [Dashboard](/docs/product/features/dashboard)
+- [Pipeline](/docs/product/features/pipeline)

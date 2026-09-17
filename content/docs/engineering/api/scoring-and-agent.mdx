@@ -1,0 +1,348 @@
+---
+title: Scoring and agent
+description: Endpoints for the ICP configuration and score preview, and for the orchestration agent's settings, runs, playbooks and draft approval queue.
+icon: Bot
+---
+
+This page covers two modules:
+
+- **ICP & Scoring** (`/icp`, in `backend/src/modules/scoring/`) defines what a good account looks like and how fit and intent combine into a score and tier.
+- **Agent** (`/agent`, in `backend/src/modules/agent/`) is the orchestration loop that reacts to signals using playbooks, plus the human approval queue for the outreach drafts it writes.
+
+For the scoring formulas and the step-by-step agent algorithm, see [Scoring engine](/docs/engineering/backend/scoring-engine) and [Orchestration agent](/docs/engineering/backend/orchestration-agent).
+
+## ICP and scoring
+
+### The ICP object
+
+There is one ICP per org. It is stored in `icp_config.json`, and its `id` equals the `orgId`.
+
+<TypeTable
+  type={{
+    industries: { type: 'string[]', description: 'Target industries. At least one is required. A match adds 25 fit points.' },
+    countries: { type: 'string[]', description: 'Target countries. A match adds 15 points.' },
+    'employeeMin / employeeMax': { type: 'integer', description: 'Headcount range. Inside the range adds 20 points; within 0.5× min to 1.5× max adds 8. employeeMin must be ≤ employeeMax.' },
+    revenueMin: { type: 'number', description: 'Minimum revenue in USD. At or above it adds 15 points.' },
+    technologies: { type: 'string[]', description: 'Target tech stack. Each match adds 5 points, up to 15.' },
+    fundingStages: { type: 'string[]', description: 'Target funding stages. A match adds 10 points.' },
+    fitWeight: { type: 'number (0–100)', description: 'Share of the score that comes from fit. Intent gets the rest (100 − fitWeight).' },
+    signalWeights: { type: 'Record<SignalType, 0–100>', description: 'Weight for each of the eight signal types in the intent score.' },
+    intentDecayDays: { type: 'number (1–365)', description: 'Signal half-life in days. Signals older than 3× this value are ignored.' },
+    tierThresholds: { type: '{ A, B, C }', description: 'Minimum score for each tier. Must satisfy A > B > C. Anything below C is tier D.' },
+    updatedAt: { type: 'string', description: 'Set by the server.' },
+  }}
+/>
+
+**Defaults** (`GET /icp/defaults`): industries SaaS, Fintech, Cybersecurity and E-commerce; countries US, UK, Canada and Germany; 50–2000 employees; revenue of at least $5M; `fitWeight` 55; `intentDecayDays` 14; tiers A 70, B 52, C 35.
+
+### `GET /icp`
+
+Returns the org's ICP. **Role:** viewer or higher. If no ICP is stored, the API creates one from the defaults first.
+
+```json title="200 response (trimmed)"
+{
+  "data": {
+    "id": "org_n5VxwIp6",
+    "industries": ["SaaS", "Fintech", "Cybersecurity", "E-commerce"],
+    "countries": ["United States", "United Kingdom", "Canada", "Germany"],
+    "employeeMin": 50,
+    "employeeMax": 2000,
+    "revenueMin": 5000000,
+    "technologies": ["Salesforce", "HubSpot", "Snowflake", "Segment", "Outreach"],
+    "fundingStages": ["Series A", "Series B", "Series C", "Series D+"],
+    "fitWeight": 55,
+    "signalWeights": { "intent_topic": 70, "website_visit": 90, "hiring": 60, "funding": 75, "job_change": 80, "tech_install": 45, "social_engagement": 35, "news": 30 },
+    "intentDecayDays": 14,
+    "tierThresholds": { "A": 70, "B": 52, "C": 35 },
+    "updatedAt": "2026-09-17T13:12:46.962Z"
+  }
+}
+```
+
+### `PUT /icp`
+
+Replaces the ICP and **re-scores every account** in the org. **Role:** admin or higher. **Status:** `200`.
+
+**Body:** the full ICP object without `id` and `updatedAt`. Every field is required. Validation failures return `400`:
+
+- `"Select at least one industry"`
+- `fieldErrors.employeeMin` "Min employees must be ≤ max"
+- `fieldErrors.tierThresholds` "Tier thresholds must satisfy A > B > C"
+
+```json title="200 response (shape)"
+{ "data": { "icp": { "...": "..." }, "changed": 17 } }
+```
+
+`changed` is the number of accounts whose score or tier changed. Every account, including flagged duplicates, gets a `scoreHistory` entry with the reason "ICP configuration updated". No activity entries are written for this bulk re-score.
+
+### `POST /icp/preview`
+
+Scores the accounts against a **draft** ICP without saving anything. The scoring page uses this for its live preview. **Role:** viewer or higher. **Status:** `200`.
+
+| Body | Type | Notes |
+|---|---|---|
+| `icp` | ICP object | Same validation as `PUT /icp` |
+| `top` | integer, 1–100 | Default 10. How many of the highest-scoring accounts to return. |
+
+```json title="200 response (shape)"
+{
+  "data": {
+    "total": 62,
+    "distribution": [
+      { "tier": "A", "current": 14, "draft": 11 },
+      { "tier": "B", "current": 18, "draft": 20 },
+      { "tier": "C", "current": 16, "draft": 17 },
+      { "tier": "D", "current": 14, "draft": 14 }
+    ],
+    "tierChanges": 5,
+    "promoted": 2,
+    "demoted": 3,
+    "avgCurrent": 51,
+    "avgDraft": 49,
+    "top": [
+      { "id": "acc_…", "name": "Polaris Labs", "domain": "polarislabs.com", "industry": "Cybersecurity", "currentScore": 84, "currentTier": "A", "score": 80, "tier": "A", "delta": -4 }
+    ]
+  }
+}
+```
+
+Flagged duplicates are left out of the preview. The "current" numbers are recomputed with the saved ICP, not read from the stored scores.
+
+### `GET /icp/defaults`
+
+Returns the default ICP, which the UI uses for **Reset to defaults**. Nothing is saved. **Role:** viewer or higher.
+
+## Agent settings and stats
+
+### `GET /agent/settings`
+
+```json title="200 response"
+{ "data": { "autopilot": true } }
+```
+
+### `PATCH /agent/settings`
+
+Turns autopilot on or off. **Role:** member or higher (this is the default write role). Body: `{ "autopilot": boolean }`. Returns `{ autopilot }`.
+
+When autopilot is on, every ingested signal is processed immediately. When it's off, signals queue up with `processed: false` until someone calls `POST /signals/process-pending` or `POST /signals/:id/process`.
+
+### `GET /agent/stats`
+
+```json title="200 response"
+{
+  "data": {
+    "runsToday": 28,
+    "runs7d": 40,
+    "totalRuns": 40,
+    "actionsTaken": 82,
+    "awaitingApproval": 5,
+    "completed": 14,
+    "failed": 1,
+    "successRate": 93.3,
+    "byStatus": [
+      { "status": "completed", "count": 14 },
+      { "status": "awaiting_approval", "count": 5 },
+      { "status": "failed", "count": 1 },
+      { "status": "skipped", "count": 20 }
+    ]
+  }
+}
+```
+
+- `runsToday` counts the last 24 hours.
+- `actionsTaken` counts steps with status `done`, not counting `evaluate`.
+- `awaitingApproval` is the number of **pending drafts**.
+- `successRate` is `completed / (completed + failed)` as a percentage. It is 100 when there are no completed or failed runs.
+
+## Runs
+
+### The agent run object
+
+<TypeTable
+  type={{
+    id: { type: 'string', description: 'run_… identifier.' },
+    signalId: { type: 'string?', description: 'The signal that triggered the run.' },
+    accountId: { type: 'string', description: 'The account the run acted on.' },
+    ruleId: { type: 'string?', description: 'The playbook that matched. Absent when the run was skipped.' },
+    trigger: { type: 'string', description: '"<source>: <signal title>"' },
+    'startedAt / durationMs': { type: 'string / number', description: 'When the run started and how long it took.' },
+    status: { type: '"completed" | "awaiting_approval" | "failed" | "skipped"', description: 'skipped means no playbook matched. awaiting_approval means a draft needs review.' },
+    steps: { type: 'AgentStep[]', description: '{ action, label, status: done|skipped|pending|failed, detail? }. The first two steps are always "evaluate" and "rescore".' },
+    'scoreBefore / scoreAfter': { type: 'number', description: 'The account score before and after the re-score step.' },
+  }}
+/>
+
+How a run is built, in short:
+
+1. The account is re-scored.
+2. The API looks for enabled playbooks whose `trigger` is `any` or the signal's type. The **first** one, in stored order, where the account's `score` is at least `minScore` and its tier is in `tiers` is the one that runs.
+3. That playbook's actions (`route_owner`, `enrich`, `draft_outreach`, `enroll_sequence`, `create_deal`, `notify`) run in the order the playbook lists them.
+4. The run is saved, and the signal is marked as processed.
+
+The run's status becomes `failed` when an action throws, or when `enroll_sequence` has no sequence or no reachable contact. The remaining actions still run. Some expected gaps only mark their own step as `failed` and leave the run's status alone: no reachable contact for `draft_outreach`, or no active seller for `route_owner`. If an earlier action already failed the run, a pending draft doesn't change the status back to `awaiting_approval`: the failure wins.
+
+### `GET /agent/runs`
+
+Lists runs, newest first. Each run includes an `account` summary and `ruleName`. Paginated.
+
+| Query | Type | Notes |
+|---|---|---|
+| `page`, `pageSize` | — | Standard |
+| `status` | CSV of run statuses | |
+| `accountId` | string | |
+
+`q` and `sort` are accepted but have no effect.
+
+```json title="200 response (trimmed)"
+{
+  "data": [
+    {
+      "id": "run_1f8db25",
+      "signalId": "sig_119f8db25",
+      "accountId": "acc_4f8db25",
+      "ruleId": "rule_2f8db25",
+      "trigger": "Apollo.io: Raised Series B",
+      "startedAt": "2026-09-17T10:12:46.870Z",
+      "durationMs": 5949,
+      "status": "completed",
+      "scoreBefore": 70,
+      "scoreAfter": 73,
+      "steps": [
+        { "action": "evaluate", "label": "Evaluate signal against playbooks", "status": "done", "detail": "Matched “Funding round follow-up”" },
+        { "action": "rescore", "label": "Re-score account", "status": "done", "detail": "70 → 73 (Tier A)" },
+        { "action": "enrich", "label": "Waterfall enrichment", "status": "done" },
+        { "action": "enroll_sequence", "label": "Enroll contacts in sequence", "status": "done" }
+      ],
+      "account": { "id": "acc_4f8db25", "name": "Tidal Logistics", "domain": "tidallogistics.com", "tier": "A", "score": 73, "industry": "SaaS" },
+      "ruleName": "Funding round follow-up"
+    }
+  ],
+  "meta": { "total": 40, "page": 1, "pageSize": 1 }
+}
+```
+
+### `GET /agent/runs/:id`
+
+Returns one run with `account`, `ruleName`, the full `signal` (or `null`), and `drafts`. Each draft includes its `contact` summary. **Errors:** `404 "Run not found"`.
+
+## Playbooks
+
+### The playbook object
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string, 1–120 | |
+| `description` | string, at most 1000 | Defaults to `""` |
+| `enabled` | boolean | Defaults to `true` |
+| `trigger` | `any` or a signal type | |
+| `minScore` | integer, 0–100 | The minimum account score, checked **after** the re-score |
+| `tiers` | array of `A`–`D`, at least one | |
+| `actions` | array of `rescore`, `route_owner`, `draft_outreach`, `enroll_sequence`, `create_deal`, `notify`, `enrich` (at least one) | `rescore` is always added at the front, and duplicates are removed |
+| `sequenceId` | string | **Required** if `actions` includes `enroll_sequence`. It's also attached to drafts, and approving a draft enrolls the contact in this sequence. |
+| `requireApproval` | boolean | Defaults to `true`. When it's `false`, drafts are sent straight away (through the mock email provider). |
+| `runs` | number | Read-only counter of how many times the playbook has run |
+
+### `GET /agent/playbooks`
+
+Lists all playbooks in creation order. Each one includes `sequenceName`. Plain array, **not paginated**. **Role:** viewer or higher.
+
+### `POST /agent/playbooks`
+
+Creates a playbook. **Role:** admin or higher. **Status:** `201`.
+
+**Errors:**
+
+- `400 "Pick a sequence for the “Enroll in sequence” action"`
+- `400 "Sequence not found"`
+- `400 "Select at least one tier"`
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/agent/playbooks \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{
+    "name": "Hot pricing-page visitors",
+    "trigger": "website_visit",
+    "minScore": 55,
+    "tiers": ["A", "B"],
+    "actions": ["route_owner", "draft_outreach", "notify"],
+    "sequenceId": "seq_1f8db25",
+    "requireApproval": true
+  }'
+```
+
+### `PATCH /agent/playbooks/:id`
+
+Partially updates a playbook, for example `{ "enabled": false }`. **Role:** admin or higher.
+
+- Send `sequenceId: null` to **clear** the sequence. If you leave `sequenceId` out, it stays as it is.
+- Validation runs on the merged result, so clearing the sequence while the playbook still has `enroll_sequence` returns `400`.
+
+**Errors:** `404 "Playbook not found"`.
+
+<Callout type="info" title="Why the PATCH schema has no defaults">
+`ruleFields` in `agent/routes.ts` deliberately leaves out zod `.default()`. zod applies defaults even inside `.partial()`, so a PATCH that didn't mention `enabled` would silently turn it back to `true`. The defaults exist only on the create schema, `ruleCreate`. See [Troubleshooting](/docs/engineering/troubleshooting).
+</Callout>
+
+### `DELETE /agent/playbooks/:id`
+
+Deletes a playbook. **Role:** admin or higher. **Status:** `204`. **Errors:** `404`.
+
+## Drafts (approval queue)
+
+### The draft object
+
+| Field | Type | Notes |
+|---|---|---|
+| `runId` | string? | The run that created the draft |
+| `accountId`, `contactId` | string | The contact is the account's most senior reachable contact (not unsubscribed or bounced) |
+| `channel` | `email` \| `linkedin` | `linkedin` when the triggering signal was a `job_change` |
+| `subject`, `body` | string | Written by the LLM provider (**mocked**, using templates) |
+| `rationale` | string | Why the agent chose this account and contact |
+| `status` | `pending` \| `approved` \| `rejected` \| `sent` | Approval sets `sent` directly. The current code never writes `approved`. |
+| `sequenceId` | string? | Copied from the playbook |
+
+### `GET /agent/drafts`
+
+Lists drafts, newest first. Each draft includes `account` and `contact`. Paginated. The only filter is `status`, as a CSV list (for example `status=pending`).
+
+### `POST /agent/drafts/:id/approve`
+
+Approves a pending draft, optionally with edits, and sends it. **Role:** member or higher. **Status:** `200`.
+
+| Body | Type | Notes |
+|---|---|---|
+| `subject` | string, 1–300 | Optional replacement subject |
+| `body` | string, 1–20000 | Optional replacement body |
+
+**Side effects:**
+
+1. Sends the email through the email provider. The provider is **mocked**: it only logs.
+2. Sets the draft's `status` to `sent`.
+3. Updates the run: the step that was `pending` becomes `done` ("Approved & sent by …"), and a run in `awaiting_approval` becomes `completed`.
+4. Sets the contact's `status` to `in_sequence` and updates `lastContactedAt`.
+5. If the draft has a `sequenceId`, enrolls the contact. If enrollment fails, `enrollment` is `null`.
+6. Logs an activity: an `email` activity for email drafts, or a `note` for LinkedIn drafts.
+
+```json title="200 response (shape)"
+{
+  "data": {
+    "draft": { "id": "drf_…", "status": "sent", "...": "..." },
+    "contact": { "id": "con_…", "name": "Ava Cohen" },
+    "enrollment": { "enrolled": 1, "skipped": 0, "enrolledIds": ["con_…"], "sequence": { "id": "seq_…", "name": "…" } }
+  }
+}
+```
+
+**Errors:** `404 "Draft not found"`; `409 "Draft is already sent"` (or `rejected`); `404 "Contact not found"`.
+
+### `POST /agent/drafts/:id/reject`
+
+Rejects a pending draft. The run's pending step becomes `skipped` ("Draft rejected by reviewer"), and a run in `awaiting_approval` becomes `completed`. **Status:** `200`. Returns the draft. **Errors:** `404`, `409`.
+
+### `POST /agent/drafts/:id/regenerate`
+
+Asks the LLM provider for a new `subject` and `body` for a pending draft. No signal context is passed this time, so the mock falls back to a generic opener. **Status:** `200`. Returns the updated draft. **Errors:** `404`, `409`.
+
+<Callout type="warn" title="Mocked LLM and email">
+`LLM_PROVIDER=anthropic` is accepted by the config but has no adapter yet: `providers/index.ts` always uses the mock and logs a warning. Drafts are built from templates that include the signal title and detail, and "sending" only writes a debug log line.
+</Callout>

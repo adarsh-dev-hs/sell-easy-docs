@@ -1,0 +1,22 @@
+{
+  "title": "Product",
+  "description": "What SellEasy does and why",
+  "icon": "Compass",
+  "root": true,
+  "pages": [
+    "---Overview---",
+    "index",
+    "problem-and-vision",
+    "personas",
+    "core-concepts",
+    "---How it works---",
+    "user-journeys",
+    "features",
+    "roles-and-permissions",
+    "---Planning---",
+    "metrics",
+    "roadmap",
+    "faq",
+    "glossary"
+  ]
+}

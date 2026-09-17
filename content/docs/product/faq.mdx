@@ -1,0 +1,101 @@
+---
+title: FAQ
+description: Answers to common questions from product managers, GTM leaders and RevOps about how SellEasy behaves.
+icon: CircleQuestionMark
+---
+
+Short answers to questions that come up often. Each answer links to the page with the full detail.
+
+## Scoring & tiers
+
+<Accordions>
+  <Accordion title="Why did an account's score change when nobody edited it?">
+    Scores are recalculated when the agent processes a new signal, when firmographics change (edit, enrichment, import update, merge), when someone clicks **Re-score**, after an import that created accounts, and when an admin saves the ICP. Intent is time-decayed, so a re-score can lower the score even without new data. The account's **Score history** chart shows the reason for each change. See [Core concepts → When re-scoring happens](/docs/product/core-concepts#when-re-scoring-happens).
+  </Accordion>
+  <Accordion title="Why is a good-fit account only Tier B, C or D?">
+    Tier depends on the **combined** score, not on fit alone. With the default 55/45 weighting, a perfect fit (100) with no intent scores 55, which is Tier B. Reaching Tier A (70 or more) needs intent as well. A fit of 60 with no intent scores 33, which is Tier D. Check the account's **Score breakdown** for missed points: a size partially outside the range (8 of 20 points), revenue below the minimum, or industries, countries and technologies spelled differently from the ICP lists.
+  </Accordion>
+  <Accordion title="Can I test ICP changes without affecting anything?">
+    Yes. The **Live preview** on ICP & Scoring re-scores every non-duplicate account with your draft and shows promoted and demoted counts, the average score change, the tier distribution and the top 10. Nothing is saved until an admin clicks **Save & re-score**. Viewers and members can use the preview too. See [ICP & scoring](/docs/product/features/icp-scoring#live-preview).
+  </Accordion>
+  <Accordion title="How long does a signal count toward intent?">
+    It keeps half its value after each half-life (14 days by default) and stops counting after three half-lives (42 days by default). Admins can change the half-life from 1 to 60 days in the UI (up to 365 through the API).
+  </Accordion>
+</Accordions>
+
+## Agent & playbooks
+
+<Accordions>
+  <Accordion title="Will the agent email prospects without anyone reviewing it?">
+    Not by default. Every new playbook has **Require approval** on, so drafts wait in **Agent → Approvals**. An admin can turn approval off for a specific playbook ("Auto-send"). Note that sending is currently mocked, so nothing is delivered either way. See [Orchestration agent](/docs/product/features/orchestration-agent).
+  </Accordion>
+  <Accordion title="Two playbooks match the same signal. Which one runs?">
+    Only the **first** enabled playbook, in creation order, whose trigger, minimum score and tiers all match. Playbooks can't be reordered yet, so create specific playbooks before broad *Any signal* ones.
+  </Accordion>
+  <Accordion title="The agent run says 'skipped'. What went wrong?">
+    Nothing broke. No enabled playbook matched after re-scoring. The run's first step explains why: either no playbook exists for that signal type, or the account's score or tier was below every candidate's threshold.
+  </Accordion>
+  <Accordion title="Who does the agent assign accounts to?">
+    **Route to owner** only acts on unowned accounts. It picks the active, non-viewer user who currently owns the **fewest** accounts. Invited users and viewers are never chosen.
+  </Accordion>
+  <Accordion title="Which contact does the agent write to?">
+    The most senior contact on the account (C-Level, then VP, Director, Manager, IC) who isn't unsubscribed or bounced. It doesn't check email validity, so verify emails first. Drafts for job-change signals use the LinkedIn channel. All others use email.
+  </Accordion>
+  <Accordion title="What happens if autopilot is off?">
+    Signals are stored as **unprocessed** and nothing else happens. The sidebar badge and **Process N pending** show the backlog. Any member can process one signal or all of them (oldest first) at any time.
+  </Accordion>
+</Accordions>
+
+## Data
+
+<Accordions>
+  <Accordion title="Does import create duplicates?">
+    Account import matches on **normalized domain**, and contact import on **email**. Existing records are skipped, or updated if you tick *Update existing records*. Repeats within the same file are skipped. Contacts **without** an email are never de-duplicated. Duplicate flags come from accounts created manually or through the API that share a domain with an existing account. See [Data import](/docs/product/features/data-import).
+  </Accordion>
+  <Accordion title="What columns can my CSV have?">
+    Headers are matched ignoring case and punctuation, and common aliases work (for example *Company*, *Website*, *Headcount*, *Work Email*, *Job Title*). Accounts need a domain. Contacts need a first name (or full name) and an account (ID, domain or name). Download the template from the import dialog for the canonical headers.
+  </Accordion>
+  <Accordion title="What does merging a duplicate move?">
+    Contacts (and their enrollments), signals, deals, activities, agent drafts and agent runs move to the canonical account. Tags and technologies are combined. The duplicate is deleted and the canonical account is re-scored.
+  </Accordion>
+  <Accordion title="Is enrichment real?">
+    Not yet. The enrichment adapter is a mock that fills a few empty fields and adds one technology. Connecting enrichment vendors sets the order and the sources shown, but no vendor API is called. See the [status table](/docs/product#what-is-live-vs-mocked-today).
+  </Accordion>
+</Accordions>
+
+## Outreach & pipeline
+
+<Accordions>
+  <Accordion title="I enrolled contacts. Why hasn't anything been sent?">
+    Sequence sending isn't built yet. Enrolling creates an active enrollment at step 1 and changes the contact's status to *in sequence*, but no scheduler sends steps. Only approved agent drafts and inbox replies are "sent", and those go through a mock provider. See [Outreach](/docs/product/features/outreach).
+  </Accordion>
+  <Accordion title="What exactly does 'Book meeting' do?">
+    It sets the contact's status to *meeting*, marks their active enrollments as *replied*, adds 1 to the sequence's meetings count, marks the message positive, and logs a meeting activity. Then it either moves the account's open **Discovery** deal to **Qualified**, leaves any other open deal unchanged, or creates a new $24,000 Discovery deal. No calendar event is created.
+  </Accordion>
+  <Accordion title="Why did a deal's probability change on its own?">
+    Moving a deal to a new stage resets its probability to that stage's default (10/25/40/60/80/100/0%). You can override it on the deal sheet afterwards.
+  </Accordion>
+  <Accordion title="What happens when a deal is marked Closed won?">
+    The close date becomes today and the probability 100%. The account moves to **Customer**, a "🎉 Deal won" notification is posted, and the deal is marked unsynced for the next CRM sync.
+  </Accordion>
+  <Accordion title="Does 'Sync to CRM' update HubSpot or Salesforce?">
+    Not yet. It requires a connected CRM integration and marks unsynced deals as synced with a generated record ID, but the CRM adapter is a mock. Nothing is pulled back from the CRM either.
+  </Accordion>
+</Accordions>
+
+## Admin
+
+<Accordions>
+  <Accordion title="Why didn't my teammate receive an invite email?">
+    Invite emails aren't sent yet. After inviting, copy the **invite link** from the dialog and send it yourself. **Resend invite** creates a new link and invalidates the old one. Pending invites use a seat.
+  </Accordion>
+  <Accordion title="How do we send signals from our own systems or Zapier?">
+    An admin creates an API key with the `signals:write` scope in **Settings → API keys** and posts to `/api/v1/webhooks/signals` with the `x-api-key` header, sending one signal or up to 100 at once. Accounts are matched by `accountId` or `domain`. See [Signals](/docs/product/features/signals#ways-signals-arrive).
+  </Accordion>
+  <Accordion title="What happens to a leaver's accounts and deals?">
+    When an admin removes them, their accounts and contacts become unassigned, and their deals and sequences are reassigned to the admin who removed them. Their access ends immediately.
+  </Accordion>
+  <Accordion title="Can viewers change anything?">
+    Only their own profile, password, notification preferences and theme. They can also run the ICP preview, which saves nothing, and mark notifications as read. Everything else is read-only. See [Roles & permissions](/docs/product/roles-and-permissions).
+  </Accordion>
+</Accordions>

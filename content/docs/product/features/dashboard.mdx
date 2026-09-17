@@ -1,0 +1,67 @@
+---
+title: Dashboard
+description: The landing page that summarises pipeline, hot accounts, recent signals and what the agent has done.
+icon: LayoutDashboard
+---
+
+The dashboard (`/dashboard`) is the first page after sign-in. In a few seconds it tells you how much pipeline is open, which accounts are heating up, what signals came in, and what the orchestration agent did. All figures come from one API call (`GET /analytics/dashboard`) and are calculated from current data each time the page loads.
+
+**Who uses it:** everyone, especially the Head of Sales and SDRs at the start of the day.
+
+## Layout
+
+| Section | What it shows |
+|---|---|
+| **Greeting** | "Good morning/afternoon/evening, *first name*", based on the browser's local time. If drafts are pending, a **Review N drafts** button links to Agent → Approvals. |
+| **Empty-state banner** | Shown when there are no accounts **and** no signals. Offers **Import accounts** and **Connect integrations**. |
+| **Stat cards** (4) | Open pipeline · Tier A accounts · Signals (7d) · Positive replies |
+| **Signal activity** chart | Signals ingested vs. agent actions per day, last 30 days |
+| **Open pipeline by stage** chart | Amount per open stage |
+| **Hottest accounts** | The top 6 accounts by intent score |
+| **Latest signals** | The 6 most recent signals |
+| **Agent activity** | The 6 most recent agent runs |
+
+## Metric definitions
+
+| Card / element | Definition |
+|---|---|
+| **Open pipeline** | Sum of `amount` for deals **not** in Closed won or Closed lost. The hint shows **weighted** pipeline (Σ amount × probability ÷ 100 over open deals) and the number of open deals. |
+| **Tier A accounts** | Number of accounts with tier **A**, excluding accounts flagged as duplicates. |
+| **Signals (7d)** | Signals whose `occurredAt` falls in the last 7 × 24 hours. |
+| **Positive replies** | Number of inbox messages with sentiment **positive**, including archived ones. The hint shows **closed-won** revenue: the all-time sum of Closed won deal amounts. |
+| **Signal activity** | For each of the last 30 **UTC** calendar days: signals by `occurredAt`, and **agent actions** (agent runs by `startedAt`, excluding *skipped* runs). |
+| **Open pipeline by stage** | For Discovery, Qualified, Demo, Proposal and Negotiation: the total amount and count of open deals. |
+| **Hottest accounts** | Non-duplicate accounts sorted by `intentScore`, highest first. Each row shows industry, employees, tier and an intent bar. |
+| **Latest signals** | Most recent by `occurredAt`, with account, type and relative time. A **New** badge marks unprocessed signals. |
+| **Agent activity** | Most recent runs by `startedAt`, with account, trigger text and status badge (completed, awaiting approval, failed, skipped). |
+
+## How to use it
+
+<Steps>
+<Step>Check **Review N drafts** first. Pending drafts are outreach the agent has written but not sent.</Step>
+<Step>Scan the **Hottest accounts**. Click one to open its page and see *why* it is hot under **Intent contributors**.</Step>
+<Step>Click a **Latest signals** row to open that account, or an **Agent activity** row to open the run trace (`/agent?run=…`).</Step>
+<Step>Use **Pipeline →** or **All →** to jump to the full screens.</Step>
+</Steps>
+
+## Behaviour & rules
+
+- The dashboard counts all records in the workspace. It is **not** filtered to the current user.
+- Days in the activity chart are UTC dates, so bars near midnight can appear on a different day than you expect in your local time zone.
+- "Agent actions" counts **runs**, not the steps inside them.
+- While data loads, skeleton placeholders appear. If the request fails, an error with **Retry** is shown.
+
+## Permissions
+
+Every role can view the dashboard. The **Review drafts** button is a link. Approving drafts requires Member or higher.
+
+## Limitations
+
+- There is no date-range picker. Use [Analytics](/docs/product/features/analytics) for 30/90/180-day views.
+- Figures don't stream live. They reload when you open the page, when the browser tab regains focus (once the data is more than 15 seconds old), and after any change you make in the app. The notification bell also refreshes every 30 seconds.
+
+## Related
+
+- [Metrics](/docs/product/metrics): definitions of every metric in the product.
+- [Analytics](/docs/product/features/analytics)
+- [Orchestration agent](/docs/product/features/orchestration-agent)

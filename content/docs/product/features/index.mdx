@@ -1,0 +1,58 @@
+---
+title: Feature map
+description: Every screen in SellEasy, what it is for, which backend service powers it and who uses it.
+icon: LayoutGrid
+---
+
+The web app has ten main screens in five sidebar groups, plus a login page, a global search palette and a notification bell. This page maps each screen to its purpose, the backend service behind it, and the people who use it. Each feature page describes the screen's purpose, how to use it, its business rules, permissions and limitations.
+
+## Feature map
+
+| Sidebar group | Screen (route) | What it is for | Backend service (API) | Primary users |
+|---|---|---|---|---|
+| Overview | [Dashboard](/docs/product/features/dashboard) (`/dashboard`) | Daily snapshot of pipeline, hot accounts, signals and agent activity | Analytics (`/analytics/dashboard`) | Everyone |
+| Data | [Accounts](/docs/product/features/accounts) (`/accounts`, `/accounts/:id`) | TAM list, account 360 view, duplicates, enrichment, score breakdown | Entity service (`/accounts`) | RevOps, SDR, AE |
+| Data | [Contacts](/docs/product/features/contacts) (`/contacts`) | People, email verification, enrollment | Entity service (`/contacts`) | SDR, AE |
+| Data | [Data import](/docs/product/features/data-import) (dialog on Accounts and Contacts) | Bulk CSV/JSON load with validation and de-duplication | Import (`/import`) | RevOps |
+| Data | [Signals](/docs/product/features/signals) (`/signals`) | Signal feed, stats, manual ingest, simulation, processing | Signal ingestion (`/signals`, `/webhooks/signals`) | RevOps, SDR, Marketing Ops |
+| Intelligence | [ICP & Scoring](/docs/product/features/icp-scoring) (`/scoring`) | Define the ICP and weights, preview live, save and re-score | ICP/Scoring service (`/icp`) | RevOps |
+| Intelligence | [Agent](/docs/product/features/orchestration-agent) (`/agent`) | Autopilot, run log, approvals queue, playbooks | Orchestration agent (`/agent`) | RevOps, SDR |
+| Engage | [Outreach](/docs/product/features/outreach) (`/outreach`, `/outreach/:id`) | Sequences, enrollments, inbox, mailboxes | Outreach service (`/sequences`, `/enrollments`, `/inbox`, `/mailboxes`) | SDR, AE |
+| Engage | [Pipeline](/docs/product/features/pipeline) (`/pipeline`) | Deal board and table, deal sheet, CRM sync | CRM/Pipeline service (`/deals`) | AE, Head of Sales |
+| Engage | [Analytics](/docs/product/features/analytics) (`/analytics`) | Attribution, funnel, tiers, sequences, reps, source mix, CSV export | Analytics service (`/analytics/overview`) | Head of Sales, Marketing Ops |
+| Workspace | [Integrations](/docs/product/features/integrations) (`/integrations`) | Vendor catalog, connect, configure, waterfall | Integrations (`/integrations`) | RevOps / Admin |
+| Workspace | [Settings](/docs/product/features/settings) (`/settings`) | Profile, organization, team, API keys, notifications, appearance | Auth service (`/org`, `/users`, `/me`, `/api-keys`) | Everyone (some tabs admin-only) |
+
+## Global UI elements
+
+These elements appear on every signed-in page:
+
+| Element | Behaviour |
+|---|---|
+| **Sidebar** | Groups the ten screens. Shows badges for **Agent** (drafts awaiting approval), **Outreach** (unread inbox messages) and **Signals** (unprocessed signals). The user menu in the footer has Profile & settings, a light/dark toggle, **Load demo data** (owner only, and only when admin reset is enabled) and **Log out**. |
+| **Breadcrumb** | Shows the current section, plus the account or sequence name on detail pages. |
+| **Search (⌘K / Ctrl+K)** | Quick actions (**Add account**, **Create deal**), page navigation, and a case-insensitive "contains" search across accounts (name, domain), contacts (name, email, title, or "first last"), deals and sequences, with up to 8 results of each type. An empty query lists the most recently updated records. |
+| **Autopilot switch** | Turns the agent's automatic processing on or off for the whole workspace. Members and above can change it. It is hidden on narrow screens. |
+| **Simulate signal** | Shown to members and above when `ENABLE_SIMULATION` is on. Ingests a random, realistic signal and shows the agent's result in a message with a **View run** link. |
+| **Notifications bell** | The workspace-wide feed with an unread count (shown as 9+ above nine). Clicking an item marks it read and opens its link. **Mark all read** is also available. The feed refreshes every 30 seconds. |
+
+<Callout type="info" title="Read-only users">
+Viewers see the same screens, but write controls (buttons, bulk bars, switches, editors) are hidden or disabled. The API enforces the same rules. See [Roles & permissions](/docs/product/roles-and-permissions).
+</Callout>
+
+## Feature pages
+
+<Cards>
+  <Card title="Dashboard" href="/docs/product/features/dashboard" />
+  <Card title="Accounts" href="/docs/product/features/accounts" />
+  <Card title="Contacts" href="/docs/product/features/contacts" />
+  <Card title="Data import" href="/docs/product/features/data-import" />
+  <Card title="Signals" href="/docs/product/features/signals" />
+  <Card title="ICP & scoring" href="/docs/product/features/icp-scoring" />
+  <Card title="Orchestration agent" href="/docs/product/features/orchestration-agent" />
+  <Card title="Outreach" href="/docs/product/features/outreach" />
+  <Card title="Pipeline" href="/docs/product/features/pipeline" />
+  <Card title="Analytics" href="/docs/product/features/analytics" />
+  <Card title="Integrations" href="/docs/product/features/integrations" />
+  <Card title="Settings" href="/docs/product/features/settings" />
+</Cards>

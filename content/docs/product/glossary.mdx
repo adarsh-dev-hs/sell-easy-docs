@@ -1,0 +1,102 @@
+---
+title: Glossary
+description: Short definitions of every term used in SellEasy and its documentation.
+icon: BookA
+---
+
+An alphabetical reference. For how these concepts fit together, see [Core concepts](/docs/product/core-concepts).
+
+| Term | Definition |
+|---|---|
+| **Account** | A company record, with firmographics, owner, stage, scores, tier, history and tags. Identified by its normalized domain. |
+| **Account stage** | Lifecycle of an account: New, Researching, Engaged, Opportunity, Customer, Disqualified. Opportunity and Customer can be set automatically by deals. |
+| **Action** | One thing a playbook tells the agent to do: re-score, route to owner, enrich, draft outreach, enroll in sequence, create deal, notify owner. |
+| **Activity** | A timeline entry (note, email, call, meeting, stage change, enrichment, score change, agent, signal) linked to an account, contact or deal. |
+| **Admin** | A role that manages the team, API keys, integrations, ICP, playbooks and mailboxes. |
+| **Agent run** | A record of the agent evaluating one signal: trigger, matched playbook, score before and after, duration, steps and status. |
+| **Agent-sourced** | A deal whose `source` starts with "Agent", meaning it was created by the agent's Create deal action. |
+| **AI suggest** | Inbox button that fills in a reply matched to the message sentiment (mock LLM today). |
+| **API key** | A `se_live_…` secret for outside systems, with scopes. Shown once and stored hashed. Used today by the signals webhook. |
+| **Approval queue (Approvals)** | The Agent tab listing pending drafts to approve, edit, regenerate or reject. |
+| **Attribution (by signal)** | Pipeline created on accounts that showed a given signal type before the deal was opened. Multi-touch. |
+| **Autopilot** | Workspace switch. When on, the agent processes each signal as it arrives. When off, signals queue up as unprocessed. |
+| **Book meeting** | Inbox action that marks the contact as *meeting*, updates enrollments and sequence stats, and creates or advances a deal. |
+| **Canonical account** | The original account that a flagged duplicate points to. |
+| **Channel (step)** | The type of a sequence step: Email, LinkedIn connect, LinkedIn message, Call task, Wait. |
+| **Closed won / Closed lost** | Final deal stages (100% / 0%). Closed won turns the account into a Customer. |
+| **Combined score (Score)** | `fit × fitWeight + intent × (1 − fitWeight)`, rounded, from 0 to 100. |
+| **Contact** | A person at an account, with seniority, email status and outreach status. |
+| **Contributors (intent)** | The signals currently adding points to an account's intent, after weighting and decay. |
+| **CRM sync** | Pushing unsynced deals to the connected CRM (mock today). Any deal edit marks the deal unsynced. |
+| **Day offset** | The day of a sequence step, relative to enrollment. |
+| **Deal** | An opportunity on an account, with amount, stage, probability, close date, owner, source and CRM fields. |
+| **Decay (half-life)** | How fast a signal's intent value fades: half every *N* days (default 14). Ignored after 3*N* days. |
+| **Draft (outreach draft)** | A message written by the agent for a contact: pending, sent or rejected, with a rationale. |
+| **Dry run** | An import mode that validates every row and reports what would happen without saving anything. |
+| **Duplicate** | An account flagged (`duplicateOf`) because its domain matches an existing account. Merge it or dismiss the flag. |
+| **Email status** | Verified, Unverified, Invalid or Missing. Invalid emails are skipped at enrollment. |
+| **Enrichment** | Filling in firmographics from connected vendors (mock today). Versioned, and may trigger a re-score. |
+| **Enrollment** | A contact's membership in a sequence, with current step, status, enrolled time and next step time. |
+| **Entity version** | A field-level change record on an account (field, from, to, source, time). |
+| **Evaluate step** | The first step of every agent run, explaining which playbook matched or why none did. |
+| **Firmographics** | Company attributes used for fit: industry, employees, revenue, country, technologies, funding stage. |
+| **Fit score** | 0–100 match to the ICP: industry 25, size 20 (8 partial), geography 15, revenue 15, tech 5 each up to 15, funding 10. |
+| **Fit weight** | The share of the combined score that comes from fit (default 55%). Intent gets the rest. |
+| **Funnel** | Analytics view: Accounts → Engaged → Opportunities → Won, for accounts created in the range. |
+| **Health score (mailbox)** | 0–100 deliverability indicator. Values below 80 raise an alert (stored value today). |
+| **ICP (ideal customer profile)** | The workspace's definition of a great-fit account, plus scoring weights, half-life and tier thresholds. |
+| **Import** | Bulk CSV/JSON load of accounts or contacts, with aliases, de-duplication, optional updates and an error report. |
+| **Inbox message** | A prospect reply thread with sentiment, read and archived flags, channel and originating sequence. |
+| **Integration** | A vendor in the catalog (19 across 9 categories) that can be connected with an encrypted API key. |
+| **Intent score** | 0–100 time-decayed, weighted sum of an account's signals (× 0.45 scaling). |
+| **Invite link** | `/login?invite=<token>` URL an admin shares so a new teammate can join. Replaced when the invite is re-sent. |
+| **Live preview** | ICP page panel that re-scores accounts with the draft ICP without saving. |
+| **Mailbox** | A sending inbox (SES, Google, Microsoft, Mailpool) with daily limit, warm-up, health and status. |
+| **Member** | The default working role: can change all GTM data, but not admin settings. |
+| **Minimum score (playbook)** | The account score, after re-scoring, that a playbook requires to match. |
+| **Mock provider** | An offline stand-in for a vendor adapter (enrichment, email, LLM, CRM, connection test). Used by default today. |
+| **Most senior reachable contact** | The contact the agent targets: the highest seniority that isn't unsubscribed or bounced. |
+| **Notification** | An entry in the shared in-app feed (bell), from agent Notify actions and Deal won events. |
+| **Open pipeline** | Total amount of deals not closed. |
+| **Organization (workspace)** | The tenant: name, domain, timezone, plan, seats, autopilot and waterfall order. |
+| **Owner (record)** | The user responsible for an account, contact, deal or sequence. |
+| **Owner (role)** | The workspace creator. Has full access, including plan changes and reset. Can't be removed or transferred. |
+| **Persona** | A target user type (Head of Sales, RevOps, SDR, AE, Marketing Ops, admin). |
+| **Plan** | Starter (3 seats), Growth (10) or Enterprise (50). Controls seat limits only. |
+| **Playbook** | A rule (trigger, minimum score, tiers, actions, sequence, approval) that the agent runs when a signal matches. First match wins. |
+| **Probability** | A deal's likelihood to close, set from its stage (10/25/40/60/80/100/0%) and editable. |
+| **Processed (signal)** | Whether the agent has evaluated the signal. |
+| **Rationale** | The agent's explanation of why it wrote a draft (tier, score, trigger, chosen contact). |
+| **Re-score** | Recalculating fit, intent, score and tier for an account, which adds a score history point. |
+| **Reply rate** | Replied ÷ sent across sequences. |
+| **Round-robin routing** | Assigning an unowned account to the active non-viewer user with the fewest accounts. |
+| **Scope (API key)** | A permission on an API key, such as `signals:write`. |
+| **Score breakdown** | The per-criterion fit points and the intent contributors shown on the account page. |
+| **Score history** | The last 20 scoring events for an account, each with fit, intent, score and reason. |
+| **Seat** | A user slot on the plan. Counts active and invited users. |
+| **Sending window** | A sequence's send days, start and end hour, and timezone (stored, not yet applied). |
+| **Seniority** | C-Level, VP, Director, Manager, IC. Inferred from the title on import when not given. |
+| **Sentiment** | Classification of a reply: positive, neutral, negative or OOO (out of office). |
+| **Sequence** | A multi-step outreach cadence (draft, active or paused) with owner, mailboxes, steps, settings and stats. |
+| **Signal** | Evidence of buying intent for an account: type, source, strength, time, optional contact. |
+| **Signal type** | Intent topic, Website visit, Hiring, Funding, Job change, Tech install, Social engagement, News. |
+| **Signal weight** | The per-type multiplier (0–100) applied to a signal's strength in the intent score. |
+| **Simulate signal** | Demo feature that ingests a random, realistic signal. Enabled by `ENABLE_SIMULATION`. |
+| **Source (deal)** | Where a deal came from, for example Manual, Sequence reply or `Agent: website visit`. |
+| **Source (signal)** | The vendor or system that produced a signal, for example Bombora or RB2B. |
+| **Step (agent)** | One entry in an agent run: an action with status done, skipped, pending or failed, and a detail. |
+| **Step (sequence)** | One touch in a sequence: a channel, day offset, and optional subject and body. |
+| **Strength** | 0–100 intensity of a signal. |
+| **Sync log** | Recent sync entries shown for an integration (synthetic today). |
+| **TAM** | Total addressable market: every account you could sell to. |
+| **Tier** | A, B, C or D, based on the combined score and the thresholds (default 70 / 52 / 35). Used by playbooks. |
+| **Tier thresholds** | Minimum scores for Tiers A, B and C. Must satisfy A > B > C. |
+| **Trigger** | The signal type a playbook responds to, or *Any signal*. |
+| **Unprocessed** | A signal the agent hasn't evaluated yet (autopilot off, or not yet processed). |
+| **Variables** | Personalization placeholders in sequence copy, such as `{{first_name}}` and `{{company}}`. Filled in only in the preview today. |
+| **Viewer** | Read-only role. Can also use the ICP preview and manage their own profile. |
+| **Warm-up** | Gradually building a mailbox's sending reputation. A per-mailbox switch. |
+| **Waterfall (enrichment)** | The ordered list of connected enrichment and contacts vendors tried in sequence. |
+| **Webhook (signals)** | `POST /api/v1/webhooks/signals`: API-key-authenticated ingestion of 1–100 signals. |
+| **Weighted pipeline** | Σ amount × probability over open deals. |
+| **Win rate** | Won ÷ (won + lost). |

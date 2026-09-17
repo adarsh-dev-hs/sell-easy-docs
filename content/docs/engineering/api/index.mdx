@@ -1,0 +1,244 @@
+---
+title: API overview
+description: Conventions shared by every SellEasy REST endpoint, including base URL, auth, roles, envelopes, pagination, status codes and rate limits.
+icon: Braces
+---
+
+The SellEasy API is a JSON REST API served by `backend/`. It has **139 operations** across 18 tags. Every operation is declared with `createModule(tag, basePath).route({...})` in `backend/src/modules/*/routes.ts`. That one declaration sets the input validation, the auth mode, the allowed roles, the success status code and the operation's OpenAPI entry, so the pages in this section follow the code directly.
+
+## Base URL and versioning
+
+| Environment | Base URL |
+|---|---|
+| Local | `http://localhost:4000/api/v1` |
+| Configured | `http://<host>:<PORT><API_PREFIX>`, where `API_PREFIX` defaults to `/api/v1` |
+
+All paths in this reference are relative to the base URL. For example, `GET /accounts` means `GET http://localhost:4000/api/v1/accounts`. The only route outside the prefix is `GET /health`.
+
+The version lives in the path (`/v1`). The API has no version header. A breaking change would ship under a new prefix.
+
+## Machine-readable spec
+
+| URL | Description |
+|---|---|
+| `GET /api/v1/openapi.json` | OpenAPI 3.1 document built from the route registry. Query parameters and request bodies are converted from the zod schemas. |
+| `GET /api/v1/docs` | Swagger UI. Click **Authorize** and enter a JWT (`bearerAuth`) or an API key (`apiKey`). |
+
+<Callout type="info" title="Where the spec is incomplete">
+The spec describes paths, methods, parameters, bodies, roles and API key scopes accurately. Response bodies are not typed: every success response is declared as an empty `{}` schema. The spec always lists 400, 401, 403 and 404, whether or not the endpoint can return them. These pages document what the code actually does.
+</Callout>
+
+## Authentication
+
+Every endpoint uses one of three auth modes:
+
+| Mode | Header | Used by |
+|---|---|---|
+| **User** (default) | `Authorization: Bearer <jwt>` | Almost every endpoint |
+| **API key** | `x-api-key: se_live_…`, or `Authorization: Bearer se_live_…` | `POST /webhooks/signals` only. The key needs the `signals:write` scope. |
+| **None** | — | `POST /auth/register`, `POST /auth/login`, `POST /auth/accept-invite`, `GET /health` |
+
+You get a token from `POST /auth/login`, `POST /auth/register` or `POST /auth/accept-invite`. Tokens are HS256 JWTs with claims `sub` (user ID), `org` and `role`, and they expire after `JWT_EXPIRES_IN` (default `7d`). On **every** request the API reads the user again from the database, so a role change, a removed user or an invited user who hasn't accepted yet takes effect immediately. See [Authentication](/docs/engineering/api/authentication).
+
+## Roles
+
+| Role | Can do |
+|---|---|
+| `viewer` | Read everything. Manage their own profile, preferences and password, and mark notifications as read. |
+| `member` | Everything a viewer can do, plus write business data: accounts, contacts, signals, sequences, deals, drafts, inbox, the autopilot toggle and integration syncs. |
+| `admin` | Everything a member can do, plus manage the org profile, team, API keys, integrations (connect, disconnect, settings, waterfall), the ICP, playbooks and mailbox create/delete. |
+| `owner` | Everything an admin can do, plus change the plan (`POST /org/plan`) and reset the workspace (`POST /admin/reset`). There is exactly one owner per org. |
+
+**Defaults:** `GET` routes allow `viewer` and up. `POST`, `PUT`, `PATCH` and `DELETE` routes allow `member` and up. A route can override the default with an explicit `roles` list. Each endpoint page lists the required role. A caller with too low a role gets `403 forbidden`.
+
+<Callout type="info" title="API keys act as members">
+A request authenticated with an API key runs with the role `member`, in the org that owns the key. The key's creator is recorded as the acting user. Only the webhook route accepts API keys, and it also checks the scope.
+</Callout>
+
+## Tenancy
+
+Every record belongs to one organization, and the API takes that organization from the credential. You never pass an `orgId`. If you use an ID from another org, you get `404`, because repository queries are always filtered by the caller's `orgId`.
+
+## Response envelope
+
+<Tabs items={['Single resource', 'Paginated list', 'Error']}>
+<Tab value="Single resource">
+
+```json
+{
+  "data": { "id": "acc_8f8db25", "name": "Polaris Labs", "tier": "A", "...": "..." }
+}
+```
+
+</Tab>
+<Tab value="Paginated list">
+
+```json
+{
+  "data": [{ "id": "acc_8f8db25", "name": "Polaris Labs" }],
+  "meta": { "total": 28, "page": 1, "pageSize": 1 }
+}
+```
+
+</Tab>
+<Tab value="Error">
+
+```json
+{
+  "error": {
+    "code": "bad_request",
+    "message": "Invalid query parameters",
+    "details": { "formErrors": [], "fieldErrors": { "tier": ["Invalid option: expected one of \"A\"|\"B\"|\"C\"|\"D\""] } }
+  }
+}
+```
+
+</Tab>
+</Tabs>
+
+Some list endpoints return a plain array in `data` with no `meta`. Examples are `GET /users`, `GET /agent/playbooks`, `GET /mailboxes`, `GET /integrations` and the `GET /accounts/:id/contacts|signals|deals` sub-resources. Each endpoint page says whether its response is paginated. Two endpoints return CSV instead of JSON: `GET /analytics/deals.csv` and `GET /import/templates/:type`.
+
+**Common record fields.** Every stored record includes `id`, `orgId`, `createdAt` and `updatedAt`. IDs are a type prefix plus a random suffix, for example `acc_…`, `con_…`, `sig_…`, `deal_…`, `seq_…`, `usr_…` or `key_…`. Timestamps are ISO-8601 UTC strings.
+
+**Expanded references.** Many list and detail endpoints attach summaries of related records:
+
+- `account`, with `id`, `name`, `domain`, `tier`, `score` and `industry`
+- `contact`, with `id`, `firstName`, `lastName`, `title`, `email` and `accountId`
+
+The attached field is `null` when the referenced record no longer exists.
+
+## Lists: pagination, search, sorting and filters
+
+Most collection endpoints accept the shared `listQuery` parameters:
+
+<TypeTable
+  type={{
+    page: { type: 'integer ≥ 1', description: '1-based page number.', default: '1' },
+    pageSize: { type: 'integer 1–1000', description: 'Items per page. Some endpoints have a lower maximum: activities, inbox and notifications allow up to 200.', default: '25' },
+    q: { type: 'string', description: 'Case-insensitive "contains" search. Each endpoint searches its own fields.' },
+    sort: { type: 'string', description: 'field:asc or field:desc, for example score:desc. The field must be one the endpoint allows. Anything else returns 400 with the allowed list.' },
+  }}
+/>
+
+**Filter conventions:**
+
+- **Multi-value filters** take a comma-separated list, as in `?tier=A,B&stage=new,engaged`. Repeating the parameter also works: `?tier=A&tier=B`. Values in a list are OR-ed together, and different filters are AND-ed.
+- **Boolean filters** accept only the exact strings `true` or `false`, as in `?processed=false`.
+- **Enum values** are validated. An unknown value returns `400` with `details.fieldErrors`.
+- **Unknown query parameters** are ignored.
+
+```bash
+curl -s "http://localhost:4000/api/v1/accounts?tier=A,B&industry=SaaS,Fintech&sort=score:desc&page=2&pageSize=50" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Status codes
+
+| Code | When |
+|---|---|
+| `200 OK` | Reads, `PATCH` and `PUT` updates, and **action** endpoints. An action is a `POST` that doesn't create a resource: `bulk-*`, `/move`, `/approve`, `/login`, `/connect` and so on. These routes set `status: 200` explicitly. |
+| `201 Created` | `POST` endpoints that create something, such as `POST /accounts`, `/contacts`, `/deals` or `/sequences`. This is the default for any `POST` without an explicit status. |
+| `202 Accepted` | `POST /webhooks/signals` |
+| `204 No Content` | Endpoints whose handler returns nothing: every `DELETE`, plus `POST /auth/logout` and `POST /auth/change-password`. |
+| `400 bad_request` | A zod validation failure (with `details.fieldErrors`), a broken business rule, or an unsupported sort field |
+| `400 invalid_json` | The request body isn't valid JSON |
+| `401 unauthorized` | Missing, invalid or expired credentials |
+| `403 forbidden` | Role too low, API key missing the scope, or the feature is disabled |
+| `404 not_found` | The resource doesn't exist in your org, or the route doesn't exist |
+| `409 conflict` | Duplicate email or mailbox, a draft that isn't pending, an account that isn't flagged as a duplicate |
+| `413 payload_too_large` | The JSON body is larger than `max(2 × IMPORT_MAX_BYTES, 1 MB)`, which is 10 MB by default |
+| `429` | Rate limit exceeded |
+| `500 internal_error` | Unhandled error. Details are logged on the server, not returned. |
+
+See [Errors](/docs/engineering/api/errors) for the full catalog and client handling.
+
+## Rate limits
+
+| Scope | Limit | Configuration |
+|---|---|---|
+| All `/api/v1/*` routes | `RATE_LIMIT_MAX` requests per `RATE_LIMIT_WINDOW_MS`, per client IP. The default is 600 per 60 s. | `backend/.env` |
+| `/auth/login`, `/auth/register`, `/auth/accept-invite` | An additional limit of **20 per 15 minutes** in production and 1000 per 15 minutes elsewhere | Hard-coded in `auth/routes.ts` |
+
+Responses include the standard `RateLimit-Policy`, `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers. When the limit is hit, the response is `429` with express-rate-limit's default plain-text body, **not** the JSON error envelope. The app sets `trust proxy` to `1`, so behind one reverse proxy the client IP comes from `X-Forwarded-For`.
+
+## Resource groups
+
+| Group | Base paths | Page |
+|---|---|---|
+| Auth | `/auth/*` | [Authentication](/docs/engineering/api/authentication) |
+| Accounts and contacts | `/accounts/*`, `/contacts/*` | [Accounts and contacts](/docs/engineering/api/accounts-and-contacts) |
+| Signals and webhooks | `/signals/*`, `/webhooks/signals` | [Signals and webhooks](/docs/engineering/api/signals-and-webhooks) |
+| ICP scoring and agent | `/icp/*`, `/agent/*` | [Scoring and agent](/docs/engineering/api/scoring-and-agent) |
+| Outreach | `/sequences/*`, `/enrollments/*`, `/mailboxes/*`, `/inbox/*`, `/outreach/stats` | [Outreach](/docs/engineering/api/outreach) |
+| Pipeline and activity | `/deals/*`, `/activities`, `/notifications/*` | [Pipeline and activities](/docs/engineering/api/pipeline-and-activities) |
+| Organization and team | `/org`, `/org/plan`, `/me`, `/me/preferences`, `/users/*`, `/api-keys/*`, `/admin/reset` | [Organization and team](/docs/engineering/api/organization-and-team) |
+| Integrations | `/integrations/*` | [Integrations](/docs/engineering/api/integrations) |
+| Analytics, search and meta | `/analytics/*`, `/search`, `/meta`, `/health` | [Analytics, search and meta](/docs/engineering/api/analytics-search-meta) |
+| Import | `/import/*` | [Import](/docs/engineering/api/import) |
+| Errors | — | [Errors](/docs/engineering/api/errors) |
+
+## Quick example
+
+<Tabs items={['curl', 'TypeScript']}>
+<Tab value="curl">
+
+```bash
+BASE=http://localhost:4000/api/v1
+
+# 1. Sign in
+TOKEN=$(curl -s -X POST "$BASE/auth/login" \
+  -H 'content-type: application/json' \
+  -d '{"email":"jordan@acmegrowth.com","password":"ChangeMe123!"}' \
+  | node -pe 'JSON.parse(require("fs").readFileSync(0)).data.token')
+
+# 2. Top Tier-A accounts
+curl -s "$BASE/accounts?tier=A&sort=score:desc&pageSize=5" -H "Authorization: Bearer $TOKEN"
+
+# 3. Create a deal (201)
+curl -s -X POST "$BASE/deals" \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"name":"Polaris Labs – Expansion","accountId":"acc_8f8db25","stage":"discovery","amount":48000,"closeDate":"2026-12-15"}'
+```
+
+</Tab>
+<Tab value="TypeScript">
+
+```ts title="selleasy-client.ts"
+const BASE = "http://localhost:4000/api/v1"
+
+type Envelope<T> = { data: T; meta?: { total: number; page: number; pageSize: number } }
+type ApiErrorBody = { error: { code: string; message: string; details?: unknown } }
+
+async function call<T>(path: string, init: RequestInit & { token?: string } = {}): Promise<Envelope<T>> {
+  const res = await fetch(BASE + path, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(init.token ? { Authorization: `Bearer ${init.token}` } : {}),
+    },
+  })
+  if (res.status === 204) return { data: undefined as T }
+  const json = await res.json()
+  if (!res.ok) throw new Error(`${res.status} ${(json as ApiErrorBody).error.code}: ${(json as ApiErrorBody).error.message}`)
+  return json as Envelope<T>
+}
+
+const { data: session } = await call<{ token: string }>("/auth/login", {
+  method: "POST",
+  body: JSON.stringify({ email: "jordan@acmegrowth.com", password: "ChangeMe123!" }),
+})
+
+const { data: accounts, meta } = await call<{ id: string; name: string; score: number }[]>(
+  "/accounts?tier=A&sort=score:desc&pageSize=5",
+  { token: session.token },
+)
+console.log(meta?.total, accounts.map((a) => `${a.name} (${a.score})`))
+```
+
+</Tab>
+</Tabs>
+
+<Callout type="success" title="Inside the SellEasy frontend">
+Don't use raw `fetch` in the web app. Use the typed hooks from `@/lib/api`, such as `useAccounts(filters)`, which handle the token, the envelope, errors and caching for you. See [Frontend data layer](/docs/engineering/frontend/data-layer).
+</Callout>

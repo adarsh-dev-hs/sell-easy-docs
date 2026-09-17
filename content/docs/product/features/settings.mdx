@@ -1,0 +1,182 @@
+---
+title: Settings
+description: Profile, password, organization, plans and seats, team and invites, API keys and scopes, the signals webhook, notification preferences, appearance and workspace reset.
+icon: Settings
+---
+
+**Settings** (`/settings`) has six tabs: **Profile**, **Organization**, **Team**, **API keys** (owners and admins only), **Notifications** and **Appearance**. The selected tab is kept in the URL (`?tab=team`).
+
+**Who uses it:** everyone for Profile, Notifications and Appearance. Owners and admins for everything else.
+
+## Profile
+
+### Profile details
+
+Edit your **full name** (at least 2 characters in the UI), **job title** and **email**. Your role is shown as a badge. **Save profile** applies the changes, and **Discard** resets them.
+
+- Emails are lower-cased and must be unique **across all workspaces**. A clash shows *"Email is already in use"*.
+- Your name and title appear to teammates and in activity timelines.
+
+### Change password
+
+Enter your **current password**, a **new password** (at least 8 characters, different from the current one) and a confirmation. A wrong current password shows *"Current password is incorrect"*. Sessions use signed tokens (valid for 7 days by default). **Log out** only discards the token in your browser.
+
+## Organization
+
+### Organization details (admins)
+
+| Field | Rules |
+|---|---|
+| **Organization name** | Required |
+| **Domain** | Must look like `acme.com`. Stored in lower case. |
+| **Timezone** | Chosen from a list of common IANA zones. Used as the default sending-window timezone for sequences. |
+
+Members and viewers see a **View only** notice.
+
+<Callout type="info">The domain field says "Teammates with this email domain can request access", but domain-based access requests aren't built yet. People join only through invites.</Callout>
+
+### Plan & seats
+
+The **Plan** card shows the current plan, its price and features (display text only), and seat usage: *used of total*, with the number of active users and pending invites.
+
+| Plan | Seats | Listed price |
+|---|---:|---|
+| Starter | 3 | $99/mo |
+| Growth (default for new workspaces) | 10 | $499/mo |
+| Enterprise | 50 | Custom |
+
+- Only the **owner** can change the plan (**Upgrade plan** / **Change plan**). The change takes effect immediately.
+- A plan with fewer seats than are currently used can't be chosen. It shows **Too few seats** and the API rejects it.
+- **Seats used = all users, including pending invites.**
+
+<Callout type="warn">There is no billing or payment flow. Changing the plan only changes the seat limit.</Callout>
+
+### Danger zone
+
+- **Reset workspace** (owner only). Shown only when the server allows it (`ENABLE_ADMIN_RESET=true`, never in production). Two options:
+  - **Clear all data** deletes accounts, contacts, signals, playbooks, agent runs and drafts, sequences, enrollments, mailboxes, inbox messages, deals, activities and notifications. It restores the **default ICP**, recreates the integration catalog with **every vendor disconnected**, and turns autopilot on. The organization, users, API keys and notification preferences are **kept**.
+  - **Load demo data** does the same, then loads the demo dataset. Demo teammates are created as real users with the password `Password123!`. The same action appears as **Load demo data** in the sidebar user menu.
+- **Log out** ends your session on this device.
+
+## Team & invites
+
+### Members table
+
+The table shows each member (avatar, name with a *You* badge for yourself, email), title, **role**, status (*active* or *invited*), last active (or *Pending*) and an actions menu. The card header shows seat usage.
+
+**Admins and owners** can:
+
+| Action | Rules |
+|---|---|
+| **Change role** (Admin, Member, Viewer) | You can't change your own role. The owner's role can't be changed. Nobody can be made owner (ownership can't be transferred). The change applies on the member's **next request**. |
+| **Edit title** | Up to 120 characters |
+| **Resend invite** | Invited users only. Creates a **new** link, and the previous link stops working. |
+| **Remove member / Revoke invite** | You can't remove yourself or the owner. See the effects below. |
+
+**What happens when a member is removed:**
+
+- The user and their notification preferences are deleted, and their access ends immediately.
+- **Accounts** and **contacts** they owned become **unassigned**.
+- **Deals** and **sequences** they owned are reassigned to **the admin who removed them**.
+
+### Inviting a teammate
+
+<Steps>
+<Step>Click **Invite member** (admins). If every seat is taken, the dialog says so and blocks the invite. Upgrade the plan first.</Step>
+<Step>Enter an **email** and choose a **role** (Admin, Member or Viewer; the role's description is shown). The email must not already belong to a user in **any** workspace.</Step>
+<Step>Click **Send invite**. The user is created with status *invited* and uses a seat.</Step>
+<Step>**Copy the invite link** from the dialog (`<app>/login?invite=<token>`) and send it to the person yourself.</Step>
+<Step>The invitee opens the link. The login page shows **Join workspace**, where they can enter a name and must choose a password of at least 8 characters. They are then signed in.</Step>
+</Steps>
+
+<Callout type="warn" title="Invite emails aren't sent">
+Email delivery isn't connected to invites yet. The dialog says so and shows a copyable link. Invited users **can't sign in** until they accept ("Your invitation has not been accepted yet"). A used or replaced link returns *"Invitation is invalid or already used"*.
+</Callout>
+
+### Roles & permissions reference
+
+The tab ends with a capability matrix and role descriptions. The full matrix, taken from the API, is on [Roles & permissions](/docs/product/roles-and-permissions).
+
+## API keys
+
+Visible to **owners and admins** only.
+
+### Keys table
+
+Name, key prefix (`se_live_xxxx••••`), scopes, created by, created, last used, status (active or revoked) and **Revoke**. Revoked keys are listed last.
+
+### Creating a key
+
+<Steps>
+<Step>Click **Create API key**.</Step>
+<Step>Enter a **name** (at least 3 characters in the UI) and choose one or more **scopes**.</Step>
+<Step>Click **Create key**. The full secret (`se_live_…`) is shown **once**. Copy it and click **I've saved it**. The dialog can't be dismissed by clicking outside it.</Step>
+</Steps>
+
+The secret is stored only as a hash. If it is lost, revoke the key and create a new one. **Revoking is permanent** and takes effect immediately.
+
+| Scope | Enforced today? |
+|---|---|
+| `signals:write` | **Yes.** Required by the signals webhook. |
+| `accounts:read`, `accounts:write`, `outreach:read`, `outreach:write`, `pipeline:read`, `pipeline:write` | Not yet. No other endpoint accepts API keys. |
+
+The key's **last used** time updates each time it authenticates. Requests made with an API key act with **member** permissions, on behalf of the user who created the key.
+
+### Webhook endpoint
+
+The tab shows the signal ingest URL (`<API>/webhooks/signals`) with a copy button and a ready-to-use `curl` example:
+
+```bash
+curl -X POST http://localhost:4000/api/v1/webhooks/signals \
+  -H "x-api-key: $SELLEASY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"website_visit","domain":"example.com","title":"Visited pricing page","strength":80,"source":"RB2B"}'
+```
+
+Send `accountId` or `domain`, or up to 100 signals as `{ "signals": [...] }`. See [Signals](/docs/product/features/signals#ways-signals-arrive).
+
+## Notifications
+
+Personal preferences with two groups of switches:
+
+| Events | Default |
+|---|---|
+| New high-intent signal | On |
+| Drafts awaiting approval | On |
+| Positive replies | On |
+| Deal stage changes | Off |
+| Integration errors | On |
+
+| Channels | Default |
+|---|---|
+| In-app | On |
+| Email | On |
+| Slack | Off |
+
+At least one channel must be on. Both the UI and the API check this. **Save preferences** stores them for your user.
+
+<Callout type="warn" title="Preferences aren't applied yet">
+Preferences are saved but don't yet filter or route notifications. The in-app bell is a **shared workspace feed** that currently receives agent **Notify owner** messages and **Deal won** alerts. Per-user email delivery isn't built. The only Slack delivery is a workspace-level webhook (`SLACK_WEBHOOK_URL`), which is used only in production.
+</Callout>
+
+## Appearance
+
+Choose **Light**, **Dark** or **System**. The choice is saved in this browser only. The sidebar user menu also has a quick light/dark toggle.
+
+## Permissions summary
+
+| Tab / action | Viewer | Member | Admin | Owner |
+|---|:-:|:-:|:-:|:-:|
+| Profile, password, notifications, appearance | ✔ | ✔ | ✔ | ✔ |
+| View organization and team | ✔ | ✔ | ✔ | ✔ |
+| Edit organization details | – | – | ✔ | ✔ |
+| Change plan | – | – | – | ✔ |
+| Invite, resend, change role, edit title, remove | – | – | ✔ | ✔ |
+| API keys tab (list, create, revoke) | – | – | ✔ | ✔ |
+| Reset workspace / load demo data (dev only) | – | – | – | ✔ |
+
+## Related
+
+- [Roles & permissions](/docs/product/roles-and-permissions)
+- [Configuration](/docs/engineering/configuration)
+- [Signals & webhooks API](/docs/engineering/api/signals-and-webhooks)

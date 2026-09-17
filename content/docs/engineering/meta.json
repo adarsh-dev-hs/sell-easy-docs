@@ -1,0 +1,25 @@
+{
+  "title": "Engineering",
+  "description": "How SellEasy is built and run",
+  "icon": "Code",
+  "root": true,
+  "pages": [
+    "---Start here---",
+    "index",
+    "getting-started",
+    "repository-structure",
+    "---System design---",
+    "architecture",
+    "data-model",
+    "backend",
+    "api",
+    "frontend",
+    "---Operations---",
+    "configuration",
+    "testing",
+    "deployment",
+    "contributing",
+    "troubleshooting",
+    "tech-debt"
+  ]
+}

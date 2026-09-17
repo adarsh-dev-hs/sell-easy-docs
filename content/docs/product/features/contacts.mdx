@@ -1,0 +1,114 @@
+---
+title: Contacts
+description: The people at your accounts, with search, filters, email verification, enrollment and the contact sheet.
+icon: Users
+---
+
+The **Contacts** screen (`/contacts`) lists every person across your accounts. From here you can find people, check and find their emails, enroll them in sequences and open a side sheet with their details, enrollments and activity.
+
+**Who uses it:** SDRs and AEs. RevOps uses it for imports and data hygiene.
+
+## List
+
+The header shows *"N people across M accounts"*. The account count excludes duplicates.
+
+| Control | Behaviour |
+|---|---|
+| **Search** | Matches first name, last name, email or title (case-insensitive "contains") |
+| **Seniority** | C-Level, VP, Director, Manager, IC |
+| **Email status** | Verified, Unverified, Invalid, Missing |
+| **Status** | New, In sequence, Replied, Meeting, Unsubscribed, Bounced |
+| **Account** | Searchable account picker, or *All accounts* |
+| **Sort** | Name (first name, then last name), Last contacted. Default: newest created first. |
+| **Paging** | 20 per page |
+
+Columns: Name and title, Account (link), Seniority, Email with its status (a spinner shows while verification runs), Status, Owner, Last contacted, and a row menu.
+
+### Row menu
+
+**Open** · **Find email** (when the email is missing) or **Verify email** · **Enroll in sequence** · **Go to account** · **Delete**
+
+### Bulk actions
+
+| Action | What happens |
+|---|---|
+| **Verify / find emails** | Calls the enrichment provider for each contact **(mock)**. The result message shows *X verified · Y invalid · Z new emails found*. |
+| **Enroll in sequence** | Opens the enroll dialog (see below). |
+| **Delete** | Asks for confirmation, then removes the contacts along with their enrollments, agent drafts and inbox messages. |
+
+## Adding a contact
+
+<Steps>
+<Step>Click **Add contact** (or **Add contact** on an account's Contacts tab, where the account is already set).</Step>
+<Step>Choose the **account** and enter **first name**, **last name** and **title** (all required in the form). Optionally set seniority (default *Manager*), department (default *Sales*), email, phone and LinkedIn URL.</Step>
+<Step>Submit. The contact sheet opens for the new contact.</Step>
+</Steps>
+
+Rules:
+
+- The account must exist.
+- Emails are trimmed and lower-cased, and must be **unique in the workspace**. A duplicate email is rejected with *"A contact with … already exists"*.
+- `emailStatus` starts as **unverified** when there is an email, otherwise **missing**. `status` starts as **new**.
+- **Location** and **owner** are copied from the account. If you add a contact through the API without a seniority, it defaults to IC.
+- An activity "Contact *Name* added" is logged on the account.
+
+## Contact sheet
+
+Clicking a row (or opening `/contacts?id=…`, which the search palette and inbox use) opens a side sheet with:
+
+- **Header:** name, title · seniority · department, status badge, email-status badge and location.
+- **Actions:** **Find/Verify email**, **Enroll in sequence**, **LinkedIn** (opens the profile) and **Delete**.
+- **Details:** editable **title**, **email** and **phone** with **Save changes** and **Reset**, plus a **Status** selector that saves immediately.
+- **Account, owner, last contacted, created.**
+- **Sequence enrollments:** each sequence with "Step N of M", the enrolled time and the enrollment status.
+- **Activity:** this contact's timeline.
+
+Changing the email resets `emailStatus` to **unverified**, or **missing** if the email is cleared, unless a status is sent in the same update.
+
+## Email verification
+
+<Callout type="warn" title="Mock provider">
+Verification uses the mock enrichment provider:
+- **Existing email:** marked *verified*, or *invalid* for a fixed subset of addresses (the result depends only on the address).
+- **Missing email:** generates `firstname.lastname@<account domain>` and marks it *verified*. This counts as **found**.
+</Callout>
+
+Invalid emails matter: contacts with an **invalid** email are **skipped** when enrolling.
+
+## Enrolling contacts
+
+The **Enroll in sequence** dialog lists **active** and **paused** sequences, with step counts and a "(paused)" label. After you pick one:
+
+- The API skips any contact that is **unsubscribed**, **bounced**, has an **invalid** email, or is already **actively** enrolled in that sequence.
+- Eligible contacts get an enrollment at step 1 (`currentStep 0`, status *active*, next step now), and their status changes to **In sequence**. The sequence's *enrolled* count goes up.
+- The result message reads *"Enrolled N contacts in 'Sequence'"* and lists the number skipped. If nobody could be enrolled, you see a warning instead.
+- A sequence with **no steps** can't accept enrollments.
+
+See [Outreach → Enrollment](/docs/product/features/outreach#enrollment) for the sequence-side view.
+
+## Contact statuses
+
+| Status | How it is set |
+|---|---|
+| New | Default |
+| In sequence | Enrolling the contact, or approving or auto-sending an agent draft to them |
+| Replied | Manual |
+| Meeting | **Book meeting** from the inbox, or manual |
+| Unsubscribed / Bounced | Manual today (no delivery feedback yet). Excludes the contact from enrollment and from the agent's contact selection. |
+
+## Permissions
+
+Viewers can browse contacts and open the sheet (fields are read-only). Members and above can add, edit, verify, enroll and delete.
+
+## Edge cases & limitations
+
+- Email uniqueness applies across the whole workspace, so the same person can't be added to two accounts with the same email.
+- There is no per-contact duplicate merge. De-duplication happens by email during [import](/docs/product/features/data-import).
+- The agent's "most senior reachable contact" excludes only *unsubscribed* and *bounced* contacts. It can pick a contact with a missing or invalid email.
+- **Unsubscribed** and **Bounced** are not set automatically, because no email delivery or reply feedback is connected yet.
+
+## Related
+
+- [Accounts](/docs/product/features/accounts)
+- [Data import](/docs/product/features/data-import)
+- [Outreach](/docs/product/features/outreach)

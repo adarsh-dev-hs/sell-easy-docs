@@ -1,0 +1,204 @@
+---
+title: Contributing
+description: The SellEasy workflow, code style, checklists for new endpoints and pages, how to keep types and docs in sync, the secrets policy, and the definition of done.
+icon: GitPullRequest
+---
+
+This page is for anyone changing SellEasy code or docs. It covers how to organise a change, which conventions to follow, and what a change needs before it's ready to merge.
+
+## Workflow
+
+### Repositories
+
+The working directory holds **separate git repositories**. See [Repository structure](/docs/engineering/repository-structure#git-repositories).
+
+| Area | Repository | Default branch |
+|---|---|---|
+| `backend/` | `github.com/adarsh-dev-hs/sell-easy-backend` | `main` |
+| `frontend/` | Its own repository, with `origin` currently `github.com/adarsh-dev-hs/sell-easy` | `main` |
+| Root files and `docs/` | Not tracked yet | — |
+
+Run git from inside the app you changed. When a change spans the API and the UI, open **one PR per repository**, link them to each other, and merge the backend first.
+
+### Branches
+
+- Never commit straight to `main`. Branch off an up-to-date `main`.
+- Name branches `<type>/<short-description>`. Examples: `feat/tasks-module`, `fix/import-row-numbers`, `docs/api-errors`.
+- Keep branches short-lived, and rebase on `main` before you open the PR.
+
+### Commits
+
+Use [Conventional Commits](https://www.conventionalcommits.org/), as the existing history does. For example: `feat: add server entry point and initial API setup` and `feat(types): enhance API contract types and add new entities`.
+
+```text
+<type>(<optional scope>): <imperative summary, ≤ 72 chars>
+
+<optional body: what and why, not how>
+```
+
+| Type | Use for |
+|---|---|
+| `feat` | A new endpoint, page or behaviour |
+| `fix` | A bug fix |
+| `refactor` | A code change that doesn't change behaviour |
+| `perf` | A performance improvement |
+| `test` | Tests only |
+| `docs` | Documentation only |
+| `chore` | Tooling, dependencies, config |
+
+Useful scopes are the module or area you changed: `accounts`, `agent`, `import`, `types`, `ui`, `auth`, and so on.
+
+### Pull requests
+
+- **One logical change per PR.** Keep refactors separate from behaviour changes.
+- **The description** should say what changed and why, list any API contract changes (new or changed fields, status codes, roles), explain how you tested it, and include screenshots for UI changes.
+- **Point out anything migration-related:** new collections, new env vars, or changes to the seed.
+- **Update the docs in the same PR** when behaviour or the API contract changes.
+- **Get at least one review before merging.** Squash-merge, and use a conventional commit title.
+
+## Code style
+
+No formatter config is committed, so match the existing style. If you run Prettier locally, `semi: false`, `printWidth: 140` and `trailingComma: "all"` roughly match it. Don't commit formatting-only changes to files you didn't otherwise touch.
+
+| Topic | Convention |
+|---|---|
+| Language | TypeScript `strict` in every app. Avoid `any`: use `unknown` and narrow it. |
+| Formatting | 2-space indent, double quotes, **no semicolons**, trailing commas, lines up to about 140 characters |
+| Backend modules | ESM with the `NodeNext` resolution. **Relative imports end in `.js`**, as in `import { db } from "../../db/index.js"`. |
+| Frontend imports | Use the `@/` alias. Import data hooks from `@/lib/api`, not from deep paths. |
+| Naming | `camelCase` for values, `PascalCase` for types and components, `SCREAMING_SNAKE` for constants, and `kebab-case` for file names (`deal-sheet.tsx`) |
+| Services | Export one object per module (`accountService`), with async methods that take `orgId` first |
+| Routes | One `route({...})` per endpoint, with zod schemas declared next to it. Include a `summary` (shown in Swagger) and a `description` when there are filters or sort fields. |
+| Errors | Throw `badRequest`, `notFound`, `conflict` or `forbidden`. Never send a response by hand from a service. |
+| Comments | Explain *why*. Use JSDoc on exported helpers. No commented-out code. |
+| React | Function components and hooks only. No `eslint-disable`. Follow the [lint rules](/docs/engineering/frontend/ui-conventions#lint-rules-to-respect). |
+
+## Checklist: adding an endpoint or module
+
+<Steps>
+<Step>
+
+### Model the data
+
+- Add or extend the type in `backend/src/domain/types.ts`.
+- For a new collection, add `collection<T>("name", "prefix")` to `backend/src/db/index.ts`.
+- Decide what should happen to the new data on **account and contact deletes and merges** (`accountService.removeMany` and `merge`, `contactService.removeMany`), and on **workspace reset** (`DATA_COLLECTIONS` in `seed/demo.ts`).
+
+</Step>
+<Step>
+
+### Write the service
+
+- Put the business rules in `modules/<name>/service.ts`, and query only through `db.*` with the caller's `orgId`.
+- Log user-visible events with `activityService.log`, and publish domain events with `bus.publish`.
+- Call vendors only through `providers.*`. Add an interface first, then a mock.
+
+</Step>
+<Step>
+
+### Declare the routes
+
+- Use `createModule("<Tag>", "/<base>")` and one `route()` for each endpoint.
+- **Validation:** use `body`, `query` and `params` zod schemas, and reuse `listQuery`, `csvList`, `boolQuery`, `idParams`, `idList` and `parseSort`.
+- **Roles:** leave the default unless you need something different, such as `atLeast("admin")` or `["owner"]`.
+- **Status:** set `status: 200` for action-style POSTs. Return `undefined` to get `204`, and use `paged()` for lists.
+- **Shared schemas:** don't put `.default()` in a field schema that a PATCH `.partial()` reuses.
+- **Path order:** declare static paths before `/:id`.
+
+</Step>
+<Step>
+
+### Register and test
+
+- Add the module to the `modules` array in `src/app.ts`.
+- Add supertest coverage to `tests/api.test.ts`: the happy path, validation, the role check and not-found.
+- Run `npm run typecheck && npm test`, then check the endpoint in Swagger.
+
+</Step>
+<Step>
+
+### Update the API contract everywhere
+
+- Update the types and hooks in `frontend/`.
+- Update the docs: the API reference page, plus the data model page if you changed data.
+- If you added configuration, update `.env.example`, `src/config.ts` and [Configuration](/docs/engineering/configuration).
+
+</Step>
+</Steps>
+
+## Checklist: adding a page
+
+- [ ] Add hooks in `src/lib/api/hooks/<service>.ts`, export them from `lib/api/index.ts`, and use detail hooks with `placeholderData: undefined`.
+- [ ] Update `src/lib/types.ts` for any new shapes.
+- [ ] Create `src/app/(app)/<route>/page.tsx`, starting with `"use client"`. Wrap it in `<Suspense>` if it reads `useSearchParams()`, and use `useParams()` for dynamic segments.
+- [ ] Use `PageHeader`, and handle the error, loading and empty states (`QueryError`, `TableSkeleton` or `Skeleton`, `EmptyState`).
+- [ ] Gate write actions with `canWrite` or `isAdmin`.
+- [ ] Do filtering, sorting and pagination on the server. Debounce search.
+- [ ] Add the nav item in `components/layout/nav.ts`.
+- [ ] Run `npm run lint`, `npx tsc --noEmit` and `npm run build` with no errors.
+- [ ] Check the page in light **and** dark mode, at mobile width, and as a viewer.
+
+The full walkthrough is in [Adding a page](/docs/engineering/frontend/adding-a-page).
+
+## Keeping types in sync
+
+`backend/src/domain/types.ts` is the **source of truth**. `frontend/src/lib/types.ts` is a hand-maintained copy of the **public** shapes. There's no code generation, so do the following whenever a response shape changes:
+
+1. **Change the backend type,** and update any public mapper (`toPublicUser`, `toPublicApiKey`, `toPublicIntegration`) so server-only fields stay private.
+2. **Mirror the change** in `frontend/src/lib/types.ts`, leaving out server-only fields such as `passwordHash`, `inviteToken`, `hash` and `apiKeyEncrypted`.
+3. **Update the endpoint-specific interfaces in the hook files** (`AccountDetail`, `PipelineStats`, `DashboardData`, and so on). They describe computed responses that aren't in `types.ts`.
+4. **Update the constants** if you added enum values. Labels go in `frontend/src/lib/constants.ts`; business lists go in `backend/src/domain/constants.ts`, which is served by `GET /meta`.
+5. **Run `npx tsc --noEmit` in `frontend/`.** The compiler shows every place that needs to change.
+6. **Mention the contract change in both PRs.**
+
+<Callout type="info" title="Future improvement">
+The OpenAPI document at `/api/v1/openapi.json` already covers requests. If response schemas were added to `route()`, the frontend types could be generated from it.
+</Callout>
+
+## Updating the docs
+
+The docs are a Fumadocs site in `docs/`.
+
+1. **Add or edit the MDX file** under `docs/content/docs/product/` or `docs/content/docs/engineering/`. The frontmatter needs `title` and `description`, and can include an `icon`, which is a lucide icon name.
+2. **List a new page in the folder's `meta.json`,** or it won't appear in the sidebar.
+3. **Preview** with `cd docs && npm run dev`, then open `http://localhost:3002`.
+4. **Components need no import:** `Callout`, `Cards` and `Card`, `Steps` and `Step`, `Tabs` and `Tab`, `Accordions` and `Accordion`, `Files`, `Folder` and `File`, `TypeTable`, and ` ```mermaid ` code blocks.
+5. **Watch for MDX pitfalls:**
+   - A bare `{`, `}` or `<` in prose breaks the build. Put it in backticks.
+   - HTML comments aren't allowed.
+   - Write path parameters like `/accounts/:id` in backticks.
+6. **Use absolute internal links** (`/docs/engineering/...`), and give every code block a language tag.
+7. **Before merging,** run `npm run build` (or `npm run types:check`).
+
+## Secrets policy
+
+<Callout type="error" title="Never commit secrets">
+- **Never commit `.env` files.** `backend/.gitignore` ignores `.env`, and `frontend/.gitignore` ignores `.env*` except `.env.example`. Only the two `.env.example` files are committed.
+- **Keep `.env.example` values obviously fake.** Use `dummy-…`, `your-…-key`, `example.com`, or an all-zero `ENCRYPTION_KEY`. `npm run setup` generates the real `JWT_SECRET` and `ENCRYPTION_KEY`.
+- **Don't use real token formats in docs, tests or fixtures,** even with made-up characters. Prefixes such as `sk-ant-`, `sk_live_`, `xoxb-`, `ghp_`, `AKIA` and `pat-na1-` look like real secrets.
+- **Treat the one-time values the API returns as secrets:** `se_live_…` API keys and `inv_…` invite tokens. Don't paste them into issues or PRs.
+- **Vendor credentials entered in the UI** are encrypted with `ENCRYPTION_KEY`. If you rotate that key, every stored vendor credential becomes unreadable.
+</Callout>
+
+**GitHub push protection** scans each push. It **rejects** a push that contains a string that looks like a secret, and that includes placeholders shaped like a real token. If a push is rejected:
+
+1. Replace the value with an obviously fake placeholder.
+2. Remove it from **history**, not just from the latest commit. Use `git commit --amend` for the last commit, or rebase and edit the commit that introduced it.
+3. Push again.
+
+**Don't** use the "allow secret" bypass for placeholders. If a **real** secret was pushed anywhere, rotate it immediately.
+
+## Definition of done
+
+A change is done when all of these hold:
+
+| Area | Requirement |
+|---|---|
+| Backend | `npm run typecheck` passes; `npm test` passes; `npm run build` succeeds; new endpoints have tests; Swagger shows the correct summary and roles |
+| Frontend | `npm run lint` is clean (no warnings added); `npx tsc --noEmit` passes; `npm run build` succeeds |
+| Behaviour | Works against a fresh `npm run setup` workspace **and** the demo dataset; handles the empty, loading and error states; the role gating is correct |
+| Contract | Frontend types and hooks match the API; there are no unhandled breaking changes |
+| Docs | The API reference and the relevant engineering or product pages are updated; `docs` builds |
+| Config | New env vars are in `.env.example`, validated in `config.ts`, and documented |
+| Security | No secrets in the diff; server-only fields stay out of responses; every query is scoped by `orgId` |
+| Review | At least one approving review; PRs in both repositories are linked when the contract changed |

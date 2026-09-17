@@ -1,0 +1,183 @@
+---
+title: Errors
+description: The SellEasy error envelope, every error code, the validation details format, and how the frontend turns errors into messages.
+icon: TriangleAlert
+---
+
+Every failed API request returns a JSON **error envelope** with an HTTP status code. The one exception is a rate-limit rejection. The envelope is written by `backend/src/middleware/error.ts`, and services raise errors with the helpers in `backend/src/lib/errors.ts`.
+
+## The envelope
+
+```json
+{
+  "error": {
+    "code": "not_found",
+    "message": "Account not found"
+  }
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `code` | string | A stable, machine-readable code. Branch on this, not on the message. |
+| `message` | string | A readable sentence that's safe to show to users |
+| `details` | object? | Present on validation errors. `conflict()` and `unprocessable()` can also attach it. When there are no details, the key is left out of the JSON entirely. |
+
+## Error codes
+
+| HTTP | `code` | Raised by | Typical messages |
+|---|---|---|---|
+| 400 | `bad_request` | `badRequest()` and zod validation | "Invalid request body", "Invalid query parameters", "Invalid path parameters", `Cannot sort by "foo". Allowed: …`, "Account not found" (for a referenced ID in a body), "Sequence has no steps" |
+| 400 | `invalid_json` | body-parser | "Malformed JSON body" |
+| 401 | `unauthorized` | `unauthorized()` | "Authentication required", "Session expired or invalid token", "User no longer has access", "Invalid email or password", "Missing x-api-key header", "Invalid API key" |
+| 403 | `forbidden` | `forbidden()` and role checks | "You do not have permission to perform this action", `API key lacks the "signals:write" scope`, "Signal simulation is disabled", "Admin reset is disabled", "The owner cannot be removed" |
+| 404 | `not_found` | `notFound()` and unknown routes | "Account not found", "Route GET /api/v1/nothing not found" |
+| 409 | `conflict` | `conflict()` | "An account with this email already exists", "Draft is already sent", "Mailbox x@y.com is already connected", "Account is not flagged as a duplicate" |
+| 413 | `payload_too_large` | body-parser | "Request body too large" |
+| 422 | `unprocessable` | `unprocessable()` | Defined for future use. No route raises it today. |
+| 429 | — | express-rate-limit | A plain-text body ("Too many requests, please try again later."), **not** JSON |
+| 500 | `internal_error` | Any unhandled exception | "Something went wrong". The stack trace is logged with pino and never returned. |
+| 0 | `network_error` | **Client only**: the frontend's `ApiError` | `Cannot reach the API at <API_URL>. Is the backend running?` |
+| any | `request_failed` | **Client only**: fallback when the response isn't the JSON envelope | The HTTP status text |
+
+<Callout type="info" title="404 versus 400 for missing records">
+When the record in the **URL path** doesn't exist, the API returns `404`, as in `GET /accounts/nope`. When a record referenced in the **body** doesn't exist, it returns `400 bad_request`, for example a `POST /deals` whose `accountId` is unknown. IDs from another organization behave exactly like IDs that don't exist.
+</Callout>
+
+## Validation errors
+
+Every `route()` parses its body, query string and path parameters with zod. When parsing fails, the API returns `400 bad_request`, and `details` holds the result of `z.flattenError()`:
+
+```json title="POST /auth/login with body: email x, no password"
+{
+  "error": {
+    "code": "bad_request",
+    "message": "Invalid request body",
+    "details": {
+      "formErrors": [],
+      "fieldErrors": {
+        "email": ["Invalid email address"],
+        "password": ["Invalid input: expected string, received undefined"]
+      }
+    }
+  }
+}
+```
+
+- **`fieldErrors`** maps top-level field names to arrays of messages. Errors in nested fields are reported under their **top-level** key. For example, an invalid `settings.endHour` on a sequence shows up under `fieldErrors.settings`, and a bad array item under `fieldErrors.scopes`.
+- **`formErrors`** holds object-level messages from `.refine()` checks that don't name a path. Example: "Link the activity to an account, contact or deal" on `POST /activities`.
+- `message` says which part of the request failed: `Invalid request body`, `Invalid query parameters` or `Invalid path parameters`.
+
+Query-string example:
+
+```bash
+curl -s "http://localhost:4000/api/v1/accounts?tier=Z" -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{
+  "error": {
+    "code": "bad_request",
+    "message": "Invalid query parameters",
+    "details": { "formErrors": [], "fieldErrors": { "tier": ["Invalid option: expected one of \"A\"|\"B\"|\"C\"|\"D\""] } }
+  }
+}
+```
+
+Business-rule failures also use `bad_request`, but they have **no** `details`. The message explains the problem:
+
+```json
+{ "error": { "code": "bad_request", "message": "Cannot sort by \"foo\". Allowed: name, score, intentScore, fitScore, employees, updatedAt, createdAt, enrichedAt" } }
+```
+
+## Order of checks
+
+For each request, the route wrapper runs its checks in this order, and the first failure wins:
+
+1. **Body parsing**: `invalid_json` or `payload_too_large`, from `express.json()`.
+2. **Rate limit**: `429`.
+3. **Authentication**: `401`. The API-key route also checks the key's scope here and returns `403` if it's missing.
+4. **Role check**: `403`.
+5. **Validation**: body, then query, then params, each returning `400`.
+6. **The handler**: the service's own `400`, `404`, `409` and so on.
+
+So an unauthenticated request with an invalid body gets `401`, not `400`.
+
+## Adding errors in backend code
+
+```ts title="backend/src/modules/example/service.ts (illustrative)"
+import { db } from "../../db/index.js"
+import { badRequest, conflict, must, notFound } from "../../lib/errors.js"
+
+export const exampleService = {
+  async get(orgId: string, id: string) {
+    const item = await db.examples.get(orgId, id)
+    if (!item) throw notFound("Example")          // 404 "Example not found"
+    return item
+  },
+
+  async rename(orgId: string, id: string, name: string) {
+    const item = must(await db.examples.get(orgId, id), "Example") // throws 404 or returns the narrowed value
+    if (item.locked) throw conflict("Example is locked")            // 409
+    if (!name.trim()) throw badRequest("Name is required")          // 400 (prefer zod for input checks)
+    return db.examples.update(orgId, id, { name })
+  },
+}
+```
+
+- Throw an `HttpError` and let the wrapper handle it. There's no need for try/catch in the route: Express 5 forwards rejected promises to the error handler.
+- Validate the input's **shape** with zod in `routes.ts`, and check **business rules** in the service.
+- Anything that isn't an `HttpError` becomes `500 internal_error` and is logged with the request path.
+
+## Handling errors in the frontend
+
+`frontend/src/lib/api/client.ts` turns every failure into an `ApiError`:
+
+```ts title="frontend/src/lib/api/client.ts (excerpt)"
+export class ApiError extends Error {
+  constructor(public status: number, public code: string, message: string, public details?: unknown) { … }
+
+  /** Field-level validation messages from a 400 response, if any. */
+  get fieldErrors(): Record<string, string[]> { … }
+}
+```
+
+| Situation | What the client does |
+|---|---|
+| `fetch` throws (API down, CORS blocked, wrong URL) | Throws `ApiError(0, "network_error", "Cannot reach the API at … Is the backend running?")` |
+| `401` while a token is stored | Calls `useAuthStore.getState().clear()`. The authenticated layout then redirects to `/login?next=…`. The error is still thrown. |
+| `204` | Resolves to `undefined` |
+| Any status that isn't OK, or a body that isn't JSON | Throws `ApiError(status, error.code ?? "request_failed", error.message ?? statusText, error.details)` |
+
+### Showing messages
+
+`errorMessage(err)` turns any error into one readable string:
+
+- For an `ApiError` with field errors, it joins them: `"email: Invalid email address · password: Invalid input: …"`.
+- For any other `ApiError`, it returns `err.message`.
+- Otherwise it returns `Error.message` or "Something went wrong".
+
+`useApiMutation` calls it automatically and shows an error toast, unless you pass `toastError: false`. `QueryError` uses it to render failed queries.
+
+### Inline field errors in forms
+
+```tsx title="Simplified pattern (see settings/profile-tab.tsx, api-keys-tab.tsx, login/page.tsx)"
+const save = useUpdateProfile()
+const [serverErrors, setServerErrors] = useState<{ email?: string }>({})
+
+save.mutate(values, {
+  onError: (err) => {
+    if (!(err instanceof ApiError)) return
+    setServerErrors({ email: err.fieldErrors.email?.[0] ?? (err.status === 409 ? err.message : undefined) })
+  },
+})
+
+// …
+{serverErrors.email && <FieldError>{serverErrors.email}</FieldError>}
+```
+
+### Retries
+
+`makeQueryClient()` retries failed **queries** at most twice, and **never** for a `4xx` `ApiError`. **Mutations** are never retried. A `network_error` has status `0`, so it's retried like a `5xx`.
+
+See [Frontend data layer](/docs/engineering/frontend/data-layer) and [Troubleshooting](/docs/engineering/troubleshooting).

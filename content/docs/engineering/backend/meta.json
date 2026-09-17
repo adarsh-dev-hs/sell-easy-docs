@@ -1,0 +1,5 @@
+{
+  "title": "Backend",
+  "icon": "Server",
+  "pages": ["index", "request-lifecycle", "data-layer", "auth-and-security", "scoring-engine", "orchestration-agent", "events-and-providers", "seeding-and-scripts"]
+}

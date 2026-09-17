@@ -1,0 +1,247 @@
+---
+title: Deployment
+description: Build and run commands, the production checklist, the target AWS deployment, example container files, observability and interim backups.
+icon: Rocket
+---
+
+SellEasy ships as two deployables: the **API** (`backend/`, a Node process) and the **web app** (`frontend/`, Next.js). Today the API persists to JSON files, so it must run as **one instance with a persistent disk**. The target AWS topology (ECS Fargate, RDS, ElastiCache, EventBridge/SQS and so on) needs the Postgres driver and the other adapters described in [Tech debt](/docs/engineering/tech-debt). The repository contains no Dockerfile, docker-compose or IaC yet; the files on this page are **examples**.
+
+## Build and start
+
+| App | Build | Start | Port |
+|---|---|---|---|
+| API | `npm --prefix backend run build` (`tsc -p tsconfig.build.json` → `backend/dist/`) | `npm --prefix backend start` → `node dist/server.js` | `PORT` (4000) |
+| Web | `npm --prefix frontend run build` (`next build`, with `NEXT_PUBLIC_API_URL` set **at build time**) | `npm --prefix frontend start` → `next start` | 3000 (Next.js default, or `PORT`) |
+| Both | `npm run build` (root) | `npm start` (root, `concurrently`) | |
+
+Requirements:
+
+- **Node ≥ 20** (`engines` in `backend/package.json`).
+- Run the API from the `backend/` directory, or set an absolute `DATA_DIR`, because `DATA_DIR` resolves against the cwd.
+- The API reads `.env` from its cwd through `dotenv`. In containers, inject real environment variables instead.
+- Run `npm run bootstrap` once against the target data directory (or database) before first use.
+- Health check: `GET /health` returns `{ "status": "ok", "env": "...", "db": "json", "uptime": 123 }`. It is not rate-limited and not logged.
+- The process handles `SIGTERM`/`SIGINT` by closing the server, and force-exits after 10 s.
+
+## Production checklist
+
+<Accordions>
+<Accordion title="Runtime and secrets">
+- [ ] `NODE_ENV=production`: JSON logs, strict auth rate limit, admin reset forced off, Slack notifications on
+- [ ] `JWT_SECRET`: unique, at least 32 random bytes, stored in AWS Secrets Manager (or equivalent)
+- [ ] `ENCRYPTION_KEY`: unique 64-hex value, stored **and backed up**. Losing it makes stored vendor credentials unreadable.
+- [ ] `JWT_EXPIRES_IN` set to your session policy
+- [ ] No `.env` file baked into images. Secrets injected at runtime.
+</Accordion>
+<Accordion title="Network">
+- [ ] `CORS_ORIGINS` = the exact web origin(s). Never `*`.
+- [ ] TLS terminated at CloudFront/ALB. HSTS is sent by helmet.
+- [ ] `trust proxy` (hard-coded to `1`) matches your proxy depth. Behind CloudFront **and** an ALB there are two hops, so adjust `app.set("trust proxy", …)`, or rate limiting will key on the wrong IP.
+- [ ] `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` tuned. With several replicas, use a shared rate-limit store or WAF rules, since the built-in store is per-process.
+- [ ] `/api/v1/docs` and `/api/v1/openapi.json` are public. Restrict them at the edge if you don't want them exposed.
+</Accordion>
+<Accordion title="Features">
+- [ ] `ENABLE_SIMULATION=false` (hides and forbids `POST /signals/simulate`)
+- [ ] `ENABLE_ADMIN_RESET=false` (it is forced off in production regardless)
+- [ ] Don't run `seed:demo` against production data. `db:reset` refuses to run in production.
+- [ ] `SLACK_WEBHOOK_URL` set to a real `https://hooks.slack.com/…` URL if Slack alerts are wanted
+</Accordion>
+<Accordion title="Data">
+- [ ] `DB_DRIVER=json`: exactly **one** API task/instance, `DATA_DIR` on a persistent encrypted volume (EBS, or EFS with a single writer), and scheduled backups (below)
+- [ ] `DB_DRIVER=postgres`: only after the driver is implemented. Run migrations, use RDS Multi-AZ, and enable automated backups and PITR.
+- [ ] Bootstrap run once. The admin password changed after first login.
+</Accordion>
+<Accordion title="Providers">
+- [ ] `*_PROVIDER` values: every non-`mock` value currently **falls back to the mock** with a warning. Confirm in the logs that no production traffic relies on mocks unintentionally.
+</Accordion>
+</Accordions>
+
+## Target AWS deployment
+
+This topology follows `plan.md` and the keys reserved in `backend/.env.example`:
+
+```mermaid
+flowchart TB
+  user[Users] --> cf[CloudFront + WAF]
+  subgraph Web
+    cf --> s3web["S3 (static export) or Vercel<br/>Next.js web app"]
+  end
+  cf -->|/api/*| alb[Application Load Balancer]
+  subgraph VPC
+    alb --> ecsApi["ECS Fargate service<br/>selleasy-api (N tasks)"]
+    ecsWorker["ECS Fargate / Lambda<br/>agent + outreach workers"]
+    ecsApi --> rds[("RDS PostgreSQL<br/>Multi-AZ")]
+    ecsWorker --> rds
+    ecsApi --> redis[("ElastiCache Redis<br/>cache + rate limits")]
+    ecsApi --> os[("OpenSearch<br/>global search")]
+  end
+  ecsApi --> eb["EventBridge<br/>selleasy-events"]
+  eb --> sqs1["SQS selleasy-signals"] --> ecsWorker
+  eb --> sqs2["SQS selleasy-outreach"] --> ecsWorker
+  ecsWorker --> sfn["Step Functions<br/>enrichment"]
+  ecsWorker --> ses["SES<br/>configuration set selleasy-outbound"]
+  ecsApi --> s3up[("S3 selleasy-uploads/imports/")]
+  ecsApi --> sm["Secrets Manager<br/>selleasy/*"]
+  ecsWorker --> sm
+  ecsApi --> sns["SNS notifications"]
+  user -.-> cognito["Cognito user pool<br/>(AUTH_DRIVER=cognito)"]
+  ecsApi --> cw["CloudWatch Logs<br/>/selleasy/api"]
+  ecsApi -.-> dd["Datadog / Sentry"]
+```
+
+| Component | AWS service | Env keys | Prerequisite in code |
+|---|---|---|---|
+| Web | CloudFront + S3, or Vercel | `NEXT_PUBLIC_API_URL` | None. The app is a client-rendered Next.js app. Confirm static-export compatibility, or use Vercel or a Node server. |
+| API | ECS Fargate behind an ALB (health check `/health`) | Core block | Postgres driver (for more than one task) |
+| Database | RDS PostgreSQL | `DATABASE_URL`, `PG*`, `DB_POOL_*` | `createPostgresRepository` + migrations |
+| Cache / rate limits | ElastiCache Redis | `CACHE_DRIVER`, `REDIS_*` | Cache layer + Redis rate-limit store |
+| Search | OpenSearch | `SEARCH_DRIVER`, `OPENSEARCH_*` | Indexer + search adapter |
+| Events | EventBridge + SQS | `EVENT_BUS_DRIVER`, `EVENTBRIDGE_*`, `SQS_*` | `EventBus` implementation + worker entry point |
+| Workflows | Step Functions | `STEP_FUNCTIONS_ENRICHMENT_ARN` | State machine + task handlers |
+| Email | SES | `SES_FROM_EMAIL`, `SES_CONFIGURATION_SET`, `EMAIL_PROVIDER=ses` | `EmailProvider` adapter |
+| Uploads | S3 | `S3_BUCKET`, `S3_IMPORTS_PREFIX` | Presigned-upload import flow |
+| Secrets | Secrets Manager | `SECRETS_MANAGER_PREFIX` | Inject as ECS secrets (no code needed) |
+| Auth | Cognito | `AUTH_DRIVER`, `COGNITO_*` | Cognito JWT verification + user mapping |
+| Notifications | SNS / Slack | `SNS_TOPIC_ARN`, `SLACK_*` | SNS publisher |
+| Logs and metrics | CloudWatch, Datadog, Sentry | `CLOUDWATCH_LOG_GROUP`, `DD_*`, `SENTRY_DSN` | `dd-trace` / `@sentry/node` initialization |
+
+Use IAM task roles instead of `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` on ECS.
+
+## Example: backend Dockerfile
+
+<Callout type="info" title="Example only">
+This file is not in the repository. It assumes the build context is `backend/`.
+</Callout>
+
+```dockerfile title="backend/Dockerfile (example)"
+# syntax=docker/dockerfile:1
+
+# ---- build ----
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY tsconfig.json tsconfig.build.json ./
+COPY src ./src
+RUN npm run build
+
+# ---- production deps ----
+FROM node:22-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# ---- runtime ----
+FROM node:22-alpine AS runtime
+ENV NODE_ENV=production \
+    PORT=4000 \
+    DATA_DIR=/data
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY package.json ./
+RUN mkdir -p /data && chown -R node:node /data
+USER node
+VOLUME ["/data"]
+EXPOSE 4000
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
+  CMD wget -qO- http://127.0.0.1:4000/health || exit 1
+CMD ["node", "dist/server.js"]
+```
+
+Notes:
+
+- `tsx` is a dev dependency, so the `scripts/*.ts` tools (bootstrap, seed) don't run in this image. Run them from a build-stage image, or a one-off task with dev dependencies, against the same `DATA_DIR` or database. Alternatively, add a compiled bootstrap entry point.
+- `pino-pretty` is only loaded when `NODE_ENV` is not `production`, so `--omit=dev` is safe.
+
+## Example: local docker-compose
+
+<Callout type="info" title="Example only">
+Not in the repository. Postgres and Redis are included to prepare for the future drivers. The API still uses `DB_DRIVER=json` until the Postgres driver is implemented, and nothing connects to Redis yet.
+</Callout>
+
+```yaml title="docker-compose.yml (example)"
+services:
+  api:
+    build: ./backend
+    ports: ["4000:4000"]
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      API_PREFIX: /api/v1
+      CORS_ORIGINS: http://localhost:3000
+      JWT_SECRET: ${JWT_SECRET:?set in .env}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set in .env}
+      DB_DRIVER: json            # switch to postgres once implemented
+      DATA_DIR: /data
+      DATABASE_URL: postgresql://selleasy:password@postgres:5432/selleasy
+      CACHE_DRIVER: memory       # redis once implemented
+      REDIS_URL: redis://redis:6379
+      ENABLE_SIMULATION: "true"
+      ENABLE_ADMIN_RESET: "true"
+    volumes:
+      - api-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: selleasy
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: selleasy
+    ports: ["5432:5432"]
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U selleasy"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+volumes:
+  api-data:
+  pg-data:
+```
+
+Run the web app on the host with `npm --prefix frontend run dev`, using the default `NEXT_PUBLIC_API_URL`.
+
+## Logging and observability
+
+- **pino** (`src/lib/logger.ts`). The level comes from `LOG_LEVEL`, and is `silent` in tests.
+  - In production, logs are **JSON on stdout**, ready for CloudWatch Logs (`awslogs` driver, group `CLOUDWATCH_LOG_GROUP`) or a Datadog agent.
+  - Outside production, logs go through `pino-pretty`.
+  - Redacted paths: `req.headers.authorization`, `req.headers['x-api-key']`, `*.password`, `*.apiKey`.
+- **pino-http** logs one line per request, with method, URL, status and response time, and assigns request ids (`req.id`). `/health` is excluded.
+- **Unhandled errors** are logged as `Unhandled error` with the error and path. Clients only see `internal_error`.
+- **Warnings worth alerting on**: `… adapter not implemented yet; using mock`, `EVENT_BUS_DRIVER=… is not implemented yet`, `Event handler failed`, `Slack notification failed`, and `No organization found in the database` at startup.
+- **Not yet implemented**: Sentry (`SENTRY_DSN`) and Datadog APM (`DD_SERVICE`, `DD_ENV`, `DD_AGENT_HOST`). To add them, initialize `@sentry/node` / `dd-trace` at the very top of `src/server.ts` (before `createApp`), and forward `errorHandler`'s 500s to Sentry.
+- **Suggested metrics**: request rate, latency and 5xx by route; agent run status counts (`GET /agent/stats`); pending drafts; unprocessed signals (`GET /signals/stats`); and JSON file sizes in `DATA_DIR` while on the JSON driver.
+
+## Backups while on the JSON driver
+
+`backend/db/` **is** the database, and it is git-ignored. Each file is replaced atomically on every write (write a temp file, then rename), so copying the folder while the API runs gives a consistent snapshot **of each file**. It is not necessarily consistent **across** files: a cascade may be half-applied.
+
+```bash title="backup-db.sh (example)"
+#!/usr/bin/env bash
+set -euo pipefail
+SRC="${DATA_DIR:-/data}"
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+tar -czf "/backups/selleasy-db-$STAMP.tgz" -C "$SRC" --exclude='*.tmp' .
+aws s3 cp "/backups/selleasy-db-$STAMP.tgz" "s3://${S3_BUCKET}/backups/" --sse aws:kms
+find /backups -name 'selleasy-db-*.tgz' -mtime +14 -delete
+```
+
+- Schedule it hourly or daily (cron, EventBridge Scheduler plus an ECS task, or EBS snapshots of the volume).
+- For a fully consistent snapshot, stop the API (or scale it to 0) during the copy.
+- **Restore**: stop the API, replace the folder contents, then start it again. The in-memory cache only reloads on startup.
+- Back up `ENCRYPTION_KEY` along with the data, or the integration credentials in `integrations.json` can't be decrypted.
+- Test restores regularly, for example into a local `DATA_DIR`, then run `npm run dev`.
+
+When the Postgres driver lands, migrate with a one-off script that reads each collection through `JsonRepository` and writes it through the new driver per organization (preserving `id`, `createdAt` and `updatedAt`), then switch `DB_DRIVER`.

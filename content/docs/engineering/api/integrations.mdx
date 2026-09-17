@@ -1,0 +1,193 @@
+---
+title: Integrations
+description: Endpoints for the vendor catalog, including connecting and disconnecting with encrypted API keys, syncing, per-integration settings, and the enrichment waterfall.
+icon: Plug
+---
+
+Each org has its own copy of the 19-vendor **integration catalog**, created when the org is created. The code is in `backend/src/modules/integrations/`.
+
+- Vendor credentials are encrypted with AES-256-GCM (`ENCRYPTION_KEY`) and stored in `apiKeyEncrypted`.
+- Responses **never** include the encrypted credential (`toPublicIntegration`). They include only `apiKeyMasked`, such as `••••••••hubs`.
+
+<Callout type="warn" title="Connections are simulated">
+No vendor API is called. Connecting runs the mock connection tester, which accepts any key of 8 or more characters. Syncing only updates timestamps and adds a random 0–150 to the usage counter. The sync log is generated from `lastSyncAt`. The encrypted key is stored so that real adapters can use it later.
+</Callout>
+
+## The integration object
+
+<TypeTable
+  type={{
+    id: { type: 'string', description: 'int_… identifier. Use it in the /integrations/:id routes.' },
+    key: { type: 'string', description: 'Stable catalog key, for example "hubspot". Unique within an org. The waterfall uses keys.' },
+    'name / description / feeds': { type: 'string', description: 'Catalog metadata. feeds names the SellEasy service the vendor supplies data to.' },
+    category: { type: '"enrichment" | "intent" | "contacts" | "scraping" | "email" | "linkedin" | "calls" | "crm" | "llm"', description: 'Vendor category.' },
+    connected: { type: 'boolean', description: 'Whether a credential is stored.' },
+    status: { type: '"ok" | "error" | "syncing" | "disconnected"', description: 'Connection health.' },
+    lastSyncAt: { type: 'string?', description: 'When the integration last synced.' },
+    apiKeyMasked: { type: 'string?', description: 'The last four characters of the key, masked.' },
+    usage: { type: '{ used, limit, unit }?', description: 'Usage counter. The unit is "credits", or "k tokens" for the llm category. The limit defaults to 10,000.' },
+    settings: { type: 'Record<string, string | boolean>', description: 'Free-form settings. See below.' },
+  }}
+/>
+
+### Catalog
+
+| Category | Vendors (`key`) |
+|---|---|
+| enrichment | `clearbit`, `fullenrich`, `prospeo` |
+| contacts | `apollo`, `limadata` |
+| intent | `bombora`, `rb2b`, `trigify` |
+| scraping | `apify`, `linkup` |
+| email | `ses`, `mailpool`, `instantly` |
+| linkedin | `heyreach` |
+| calls | `fireflies` |
+| crm | `hubspot`, `attio`, `salesforce` |
+| llm | `anthropic` |
+
+### Settings
+
+When an integration is created, its `settings` are `autoSync: true` and `syncInterval: "hourly"`, plus a few category-specific values:
+
+- `writeBack: true` for the CRM category, `false` for the rest
+- `useInWaterfall: true` for enrichment and contacts
+- `model` and `tokenBudget` for the LLM category
+
+The web app's configure sheet (`components/integrations/config.ts`) adds more keys, such as `overwriteFields`, `minStrength`, `dailyCap` and `conflictPolicy`. The server accepts any key, but it currently **reads only two**:
+
+- `useInWaterfall`: `false` removes the vendor from the enrichment waterfall.
+- `syncInterval` (`15min`, `hourly` or `daily`): sets the spacing of the generated sync log.
+
+## Endpoints
+
+### `GET /integrations`
+
+Lists the org's integrations in catalog order. Plain array, **not paginated**. **Role:** viewer or higher.
+
+| Query | Notes |
+|---|---|
+| `category` | CSV of categories, such as `crm,llm` |
+| `connected` | boolean |
+| `q` | Matches `name`, `description` or `feeds` |
+
+```bash
+curl -s "http://localhost:4000/api/v1/integrations?category=crm&connected=true" -H "Authorization: Bearer $TOKEN"
+```
+
+```json title="200 response (trimmed)"
+{
+  "data": [
+    {
+      "id": "int_UWJPPb4G",
+      "key": "hubspot",
+      "name": "HubSpot",
+      "category": "crm",
+      "description": "Bi-directional sync of companies, contacts and deals.",
+      "feeds": "CRM/Pipeline",
+      "connected": true,
+      "status": "ok",
+      "lastSyncAt": "2026-09-17T05:12:46.870Z",
+      "apiKeyMasked": "••••••••hubs",
+      "usage": { "used": 5088, "limit": 10000, "unit": "credits" },
+      "settings": { "autoSync": true, "syncInterval": "hourly", "writeBack": true }
+    }
+  ]
+}
+```
+
+### `GET /integrations/stats`
+
+```json title="200 response"
+{ "data": { "total": 19, "connected": 13, "errors": 1, "errorIds": ["int_NnxAix9e"], "creditsUsed": 62046, "tokensUsed": 4770 } }
+```
+
+`creditsUsed` and `tokensUsed` add up the usage of **connected** integrations, split by unit.
+
+### `GET /integrations/waterfall`
+
+Returns the **enrichment waterfall**: the connected `enrichment` and `contacts` integrations where `useInWaterfall` isn't `false`. They're sorted by the org's `settings.waterfallOrder`, and unranked vendors come last in catalog order. Each item has a 1-based `position`.
+
+```json title="200 response (trimmed)"
+{
+  "data": [
+    { "id": "int_BexssAxr", "key": "clearbit", "name": "Clearbit", "category": "enrichment", "connected": true, "position": 1, "...": "..." },
+    { "id": "int_…", "key": "apollo", "name": "Apollo.io", "category": "contacts", "connected": true, "position": 2, "...": "..." }
+  ]
+}
+```
+
+Account enrichment (`POST /accounts/bulk-enrich`, the agent's `enrich` action) uses this order.
+
+### `PUT /integrations/waterfall`
+
+Saves the waterfall order. **Role:** admin or higher. **Status:** `200`.
+
+| Body | Type |
+|---|---|
+| `keys` | string[], at most 50. Integration **keys**, not IDs. |
+
+**Behaviour:**
+
+- Duplicate keys are removed.
+- Every key must belong to an `enrichment` or `contacts` integration, otherwise `400 "Not enrichment/contacts integrations: <keys>"`.
+- Keys that were in the old order but aren't in the request are **kept after** the new ones, so a disconnected vendor keeps its place if it's reconnected later.
+
+Returns the new waterfall, in the same shape as `GET /integrations/waterfall`.
+
+```bash
+curl -s -X PUT http://localhost:4000/api/v1/integrations/waterfall \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"keys":["apollo","clearbit","fullenrich"]}'
+```
+
+### `GET /integrations/:id`
+
+Returns one integration plus `syncLog`: five entries of `{ at, ok, message, durationMs }`, spaced by `syncInterval` back from `lastSyncAt`. The log is empty if the integration has never synced. When `status` is `error`, the newest entry is a failure ("401 Unauthorized — API key rejected").
+
+**Errors:** `404 "Integration not found"`.
+
+### `POST /integrations/:id/connect`
+
+Connects the integration using an API key. **Role:** admin or higher. **Status:** `200`.
+
+| Body | Type |
+|---|---|
+| `apiKey` | string, 8–500 characters (trimmed) |
+
+**Behaviour:** tests the key with the connection tester. If the test fails, it returns `400` with the vendor's message. If it passes, the integration gets `connected: true`, `status: "ok"`, `lastSyncAt` set to now, the encrypted and masked key, and a default `usage` if it had none. Returns the public integration.
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/integrations/int_UWJPPb4G/connect \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"apiKey":"your-vendor-api-key"}'
+```
+
+### `POST /integrations/:id/disconnect`
+
+Disconnects the integration and deletes the stored credential and `lastSyncAt`. The integration's status becomes `disconnected`, but its settings and usage are kept. **Role:** admin or higher. **Status:** `200`.
+
+### `POST /integrations/:id/sync`
+
+Starts a sync now. **Role:** member or higher. **Status:** `200`.
+
+The integration's status becomes `ok`, `lastSyncAt` is set to now, and the usage counter goes up by a random 0–150 (capped at the limit).
+
+**Errors:** `400 "<Name> is not connected"`.
+
+### `PATCH /integrations/:id/settings`
+
+Merges new values into `settings`. **Role:** admin or higher.
+
+**Body:** an object whose keys are 1–64 characters long and whose values are strings of at most 500 characters or booleans. Numbers must be sent as strings.
+
+```bash
+curl -s -X PATCH http://localhost:4000/api/v1/integrations/int_BexssAxr/settings \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"useInWaterfall":false,"syncInterval":"daily"}'
+```
+
+Returns the public integration.
+
+## Related
+
+- CRM sync for deals goes through [`POST /deals/sync-crm`](/docs/engineering/api/pipeline-and-activities#post-dealssync-crm), which needs a connected `crm` integration.
+- The provider adapters behind these integrations are described in [Events and providers](/docs/engineering/backend/events-and-providers).

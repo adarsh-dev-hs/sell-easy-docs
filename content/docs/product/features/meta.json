@@ -1,0 +1,5 @@
+{
+  "title": "Feature guide",
+  "icon": "LayoutGrid",
+  "pages": ["index", "dashboard", "accounts", "contacts", "data-import", "signals", "icp-scoring", "orchestration-agent", "outreach", "pipeline", "analytics", "integrations", "settings"]
+}

@@ -1,0 +1,348 @@
+---
+title: Signals and webhooks
+description: Ingest, list, simulate and process buying signals, and push them from vendor tools through the API-key webhook.
+icon: RadioTower
+---
+
+A **signal** is a buying-intent event tied to an account, such as a pricing-page visit, a funding round or a job change. When a signal is ingested, the API stores it, logs a `signal` activity and publishes `signal.ingested`. If the org's **autopilot** is on, the API then runs the [orchestration agent](/docs/engineering/backend/orchestration-agent) on the signal **synchronously, in the same request**.
+
+The code is in `backend/src/modules/signals/`.
+
+## The signal object
+
+<TypeTable
+  type={{
+    id: { type: 'string', description: 'sig_… identifier.' },
+    type: { type: '"intent_topic" | "website_visit" | "hiring" | "funding" | "job_change" | "tech_install" | "social_engagement" | "news"', description: 'Signal type. Its ICP signal weight feeds the intent score.' },
+    source: { type: 'string', description: 'Vendor name. Defaults to the first source listed for the type in GET /meta signalSources, for example website_visit → "RB2B".' },
+    accountId: { type: 'string', description: 'The account the signal belongs to.' },
+    contactId: { type: 'string?', description: 'Optional contact. Must belong to the same account.' },
+    title: { type: 'string', description: 'Short headline.' },
+    detail: { type: 'string', description: 'Extra context. Defaults to "".' },
+    strength: { type: 'number (0–100)', description: 'Vendor-reported strength.' },
+    occurredAt: { type: 'string (ISO)', description: 'When it happened. Defaults to now. Intent decays with age.' },
+    processed: { type: 'boolean', description: 'true once the agent has evaluated the signal.' },
+  }}
+/>
+
+## Ingest body
+
+`POST /signals` and `POST /webhooks/signals` validate their input with the same schema:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `type` | signal type enum | yes | |
+| `accountId` | string | one of `accountId` / `domain` | Takes precedence over `domain` |
+| `domain` | string | one of `accountId` / `domain` | Resolved to an account. See [domain resolution](#domain-resolution). |
+| `contactId` | string | no | Must belong to the resolved account |
+| `title` | string, 1–300 (trimmed) | yes | |
+| `detail` | string, at most 2000 | no | |
+| `strength` | number, 0–100 (coerced from strings) | yes | |
+| `source` | string, at most 100 | no | |
+| `occurredAt` | ISO-8601 date-time in UTC | no | For example `2026-09-17T10:00:00Z`. It must end in `Z`: offsets such as `+02:00` and date-only values are rejected. |
+
+If neither `accountId` nor `domain` is sent, the API returns `400` with `fieldErrors.accountId: ["accountId or domain is required"]`.
+
+### Domain resolution
+
+The API normalizes `domain` (lowercase, protocol, `www.` and path removed), so `https://www.Acme.com/pricing` becomes `acme.com`. It then looks for a **non-duplicate** account with that exact domain. If there isn't one, the item fails with `400 "No account with domain <domain>"`. **Signals never create accounts.** Import or create the account first.
+
+**Other ingest errors:**
+
+- `400 "Account not found"` if `accountId` doesn't exist.
+- `400 "Contact does not belong to the account"`.
+
+## Endpoints
+
+### `GET /signals`
+
+Lists signals, newest first (by `occurredAt`). Each signal includes `account` and `contact` summaries. Paginated.
+
+| Query | Type | Description |
+|---|---|---|
+| `page`, `pageSize` | — | Standard |
+| `q` | string | Matches `title` or `detail`, **or** any account whose name contains `q` |
+| `type` | CSV of signal types | |
+| `source` | CSV | Exact vendor names, such as `RB2B,Bombora` |
+| `processed` | boolean | `false` returns only signals the agent hasn't evaluated yet |
+| `accountId` | string | |
+| `sinceDays` | integer, 1–3650 | Only signals whose `occurredAt` falls within the last N days |
+
+<Callout type="info" title="Sort order is fixed">
+`sort` is validated but **ignored**. Signals always come back newest first.
+</Callout>
+
+```bash
+curl -s "http://localhost:4000/api/v1/signals?type=funding,hiring&sinceDays=7&pageSize=1" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```json title="200 response"
+{
+  "data": [
+    {
+      "id": "sig_119f8db25",
+      "type": "funding",
+      "source": "Apollo.io",
+      "accountId": "acc_4f8db25",
+      "title": "Raised Series B",
+      "detail": "$32M led by Accel",
+      "strength": 38,
+      "occurredAt": "2026-09-17T10:12:46.870Z",
+      "processed": true,
+      "orgId": "org_n5VxwIp6",
+      "createdAt": "2026-09-17T10:12:46.870Z",
+      "updatedAt": "2026-09-17T10:12:46.870Z",
+      "account": { "id": "acc_4f8db25", "name": "Tidal Logistics", "domain": "tidallogistics.com", "tier": "A", "score": 73, "industry": "SaaS" },
+      "contact": null
+    }
+  ],
+  "meta": { "total": 260, "page": 1, "pageSize": 1 }
+}
+```
+
+### `GET /signals/stats`
+
+Returns volume statistics.
+
+```json title="200 response"
+{
+  "data": {
+    "total": 260,
+    "last24h": 28,
+    "last7d": 83,
+    "unprocessed": 7,
+    "topSource": "Linkup",
+    "bySource": [{ "source": "Linkup", "count": 55 }, { "source": "Apify", "count": 44 }],
+    "byType30d": [{ "type": "funding", "count": 23 }, { "type": "website_visit", "count": 35 }]
+  }
+}
+```
+
+`bySource` counts all signals, highest count first. `byType30d` counts only the last 30 days.
+
+### `POST /signals`
+
+Ingests one signal as the signed-in user. **Role:** member or higher. **Status:** `201`.
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/signals \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"type":"website_visit","domain":"polarislabs.com","title":"Visited pricing page","detail":"3 pageviews","strength":82}'
+```
+
+```json title="201 response (shape)"
+{
+  "data": {
+    "signal": { "id": "sig_…", "processed": true, "source": "RB2B", "...": "..." },
+    "run": { "id": "run_…", "status": "awaiting_approval", "scoreBefore": 84, "scoreAfter": 86, "steps": ["..."] }
+  }
+}
+```
+
+When autopilot is **off**, `run` is `null` and the signal stays `processed: false` until you process it. See the [agent run object](/docs/engineering/api/scoring-and-agent#the-agent-run-object).
+
+### `POST /signals/simulate`
+
+Ingests a random, realistic signal. This is for demos and testing. **Role:** member or higher. **Status:** `201`. The response has the same shape as `POST /signals`.
+
+**Behaviour:** picks a random account from the 30 non-duplicate accounts with the highest fit score, and a random signal type with template text. It sets a strength between 60 and 97. For `website_visit`, `job_change` and `social_engagement`, it attaches the account's most senior reachable contact.
+
+**Errors:**
+
+- `403 "Signal simulation is disabled"` when `ENABLE_SIMULATION` isn't set to `true` or `1`. The web app hides the button in that case: `GET /meta` returns `features.simulation`.
+- `400 "Add at least one account before simulating signals"`.
+
+### `POST /signals/process-pending`
+
+Runs the agent on every signal where `processed` is `false`, oldest first. **Role:** member or higher. **Status:** `200`.
+
+```json title="200 response (shape)"
+{ "data": { "processed": 7, "runs": [{ "id": "run_…", "status": "skipped", "...": "..." }] } }
+```
+
+This works whether autopilot is on or off. It's how you drain the queue after turning autopilot off. The signals are processed one after another inside the request.
+
+### `GET /signals/:id`
+
+Returns one signal with `account`, `contact`, and its `runs` (newest first). Each run has a `ruleName` (the playbook name, or `null`).
+
+**Errors:** `404 "Signal not found"`.
+
+### `POST /signals/:id/process`
+
+Runs the agent on one signal and returns the new run. **Role:** member or higher. **Status:** `200`.
+
+Running it on a signal that was already processed creates **another** run.
+
+**Errors:** `404 "Signal not found"`.
+
+### `DELETE /signals/:id`
+
+Deletes a signal. **Status:** `204`. **Errors:** `404`.
+
+The account isn't re-scored automatically, so call `POST /accounts/:id/rescore` if you need the intent score updated right away.
+
+### `POST /webhooks/signals`
+
+Ingests signals sent by vendors, Zapier or your own scripts.
+
+| | |
+|---|---|
+| **Auth** | API key in `x-api-key` (or `Authorization: Bearer <key>`) |
+| **Scope** | `signals:write` |
+| **Acts as** | Role `member` in the key's org |
+| **Status** | `202 Accepted`, even when some or all items fail |
+| **Batch size** | 1–100 signals |
+
+**Body:** either a single [ingest object](#ingest-body), or `{ "signals": [ ...ingest objects ] }`.
+
+**Processing:**
+
+1. The API checks the key **before** it validates the body.
+   - A missing or invalid key returns `401`.
+   - A key without the scope returns `403` with the message "API key lacks the `signals:write` scope".
+2. The body is validated as a whole. If any item fails schema validation (a bad `type`, a missing `title`, a `strength` above 100, and so on), the **whole request** fails with `400`.
+3. Valid items are ingested **one at a time, in order**. A business error, such as an unknown domain or a contact from another account, affects only that item. The API reports it in `results` and moves on to the next item.
+4. If autopilot is on, the agent runs for each item inside the request. Budget for about a second per signal while the providers are mocked.
+
+**Response:**
+
+```json title="202 response"
+{
+  "data": {
+    "accepted": 1,
+    "results": [
+      { "index": 0, "ok": true, "signalId": "sig_Xa81kq2P", "runStatus": "completed" },
+      { "index": 1, "ok": false, "error": "No account with domain unknown-co.com" }
+    ]
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `accepted` | The number of items stored |
+| `results[].index` | Zero-based position of the item in the request |
+| `results[].runStatus` | The agent run's status (`completed`, `awaiting_approval`, `failed` or `skipped`), or `queued` when autopilot is off |
+| `results[].error` | Why the item was rejected |
+
+<Tabs items={['Single', 'Batch', 'TypeScript']}>
+<Tab value="Single">
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/webhooks/signals \
+  -H "x-api-key: $SELLEASY_API_KEY" -H 'content-type: application/json' \
+  -d '{
+    "type": "website_visit",
+    "domain": "polarislabs.com",
+    "title": "Visited pricing page",
+    "detail": "2 identified visitors, 5 pageviews",
+    "strength": 88,
+    "source": "RB2B",
+    "occurredAt": "2026-09-17T09:30:00Z"
+  }'
+```
+
+</Tab>
+<Tab value="Batch">
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/webhooks/signals \
+  -H "x-api-key: $SELLEASY_API_KEY" -H 'content-type: application/json' \
+  -d '{
+    "signals": [
+      { "type": "funding", "domain": "stratuspay.com", "title": "Raised Series C", "strength": 75, "source": "Linkup" },
+      { "type": "hiring",  "domain": "unknown-co.com", "title": "Hiring 5 SDRs",  "strength": 60 }
+    ]
+  }'
+```
+
+</Tab>
+<Tab value="TypeScript">
+
+```ts title="push-signals.ts"
+type SignalInput = {
+  type: "intent_topic" | "website_visit" | "hiring" | "funding" | "job_change" | "tech_install" | "social_engagement" | "news"
+  domain?: string
+  accountId?: string
+  title: string
+  detail?: string
+  strength: number
+  source?: string
+  occurredAt?: string
+}
+
+export async function pushSignals(signals: SignalInput[]) {
+  const results = []
+  for (let i = 0; i < signals.length; i += 100) {
+    const res = await fetch("http://localhost:4000/api/v1/webhooks/signals", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": process.env.SELLEASY_API_KEY! },
+      body: JSON.stringify({ signals: signals.slice(i, i + 100) }),
+    })
+    if (res.status !== 202) throw new Error(`Webhook rejected: ${res.status} ${await res.text()}`)
+    const { data } = await res.json()
+    results.push(...data.results.map((r: { index: number }) => ({ ...r, index: r.index + i })))
+  }
+  return results
+}
+```
+
+</Tab>
+</Tabs>
+
+## Vendor integration recipe
+
+<Steps>
+<Step>
+
+### Make sure the accounts exist
+
+Webhook signals are matched to accounts by `domain`, and they never create accounts. Load your target accounts first, with **Accounts → Import** or [`POST /import/accounts`](/docs/engineering/api/import).
+
+</Step>
+<Step>
+
+### Create a scoped API key
+
+An admin opens **Settings → API keys → Create key** and selects the `signals:write` scope. Alternatively, call `POST /api-keys` with `{"name":"RB2B webhook","scopes":["signals:write"]}`. Copy the `secret` (`se_live_…`) straight away, because it's shown only once.
+
+</Step>
+<Step>
+
+### Map the vendor payload
+
+In your vendor, Zapier or n8n, map the payload to the ingest body:
+
+| Vendor field | SellEasy field |
+|---|---|
+| Company website or domain | `domain` |
+| Event kind | `type`, one of the eight types |
+| Headline | `title` |
+| Extra info | `detail` |
+| Score or confidence, rescaled to 0–100 | `strength` |
+| Vendor name | `source` |
+| Event time (ISO, UTC) | `occurredAt` |
+
+</Step>
+<Step>
+
+### Send and check the per-item results
+
+Send a `POST` to `/api/v1/webhooks/signals` with the `x-api-key` header. Treat any status other than `202` as a failed request and retry with backoff. For a `202`, check `results[].ok`. Items that failed because the domain was unknown shouldn't be retried as they are. Create the account first.
+
+</Step>
+<Step>
+
+### Watch it land
+
+The signals appear on the **Signals** page. When autopilot is on, the agent run appears on the **Agent** page. The key's `lastUsedAt` is updated on every call.
+
+</Step>
+</Steps>
+
+<Callout type="warn" title="Security notes">
+- Anyone holding the key can create signals, and that can trigger agent actions. Keep keys in a secrets manager and revoke them with `POST /api-keys/:id/revoke` when they leak.
+- The vendor webhook secrets in `.env.example` (`RB2B_WEBHOOK_SECRET`, `TRIGIFY_WEBHOOK_SECRET`) **aren't checked yet**. Vendor-specific signature verification and payload mapping aren't implemented, so a small translation layer, such as Zapier, is still needed.
+</Callout>

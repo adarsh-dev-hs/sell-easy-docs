@@ -1,0 +1,48 @@
+---
+title: SellEasy documentation
+description: Everything you need to understand, build, and run SellEasy — the agentic GTM platform.
+icon: BookOpen
+---
+
+SellEasy turns **buying signals into pipeline**. It unifies intent, hiring, funding and website signals per account. It scores every account on **ICP fit + live intent**, and an **orchestration agent** routes accounts, drafts outreach, enrolls contacts in sequences and opens deals. People stay in the loop through an approval queue.
+
+These docs have two sections:
+
+<Cards>
+  <Card title="Product" href="/docs/product">
+    For product managers, GTM leaders and anyone who needs to understand **what** SellEasy does, **who** it is for, and **how** each feature behaves.
+  </Card>
+  <Card title="Engineering" href="/docs/engineering">
+    For developers: architecture, data model, API reference, the backend and frontend codebases, configuration, testing and deployment.
+  </Card>
+</Cards>
+
+## Quick links
+
+<Cards>
+  <Card title="Core concepts" href="/docs/product/core-concepts" description="Accounts, signals, fit, intent, tiers, playbooks — the vocabulary of the product." />
+  <Card title="End-to-end user journeys" href="/docs/product/user-journeys" description="From a raw signal to a booked meeting and a won deal." />
+  <Card title="Run it locally" href="/docs/engineering/getting-started" description="Install, bootstrap the database and start both servers in minutes." />
+  <Card title="Architecture" href="/docs/engineering/architecture" description="Services, request flow and how the agent loop works." />
+  <Card title="API reference" href="/docs/engineering/api" description="Every endpoint, grouped by service, with examples." />
+  <Card title="Configuration" href="/docs/engineering/configuration" description="Every environment variable and what it switches on." />
+</Cards>
+
+## The system at a glance
+
+```mermaid
+flowchart LR
+  subgraph Sources
+    V[Intent vendors<br/>Bombora · RB2B · Trigify]
+    I[CSV / JSON import]
+    U[Users]
+  end
+  V -- webhook --> API
+  I --> API
+  U --> WEB[Next.js web app]
+  WEB -- REST /api/v1 --> API[Express API]
+  API --> DB[(Data store<br/>JSON files → Postgres)]
+  API --> AG[Orchestration agent]
+  AG --> API
+  API --> P[Providers<br/>enrichment · CRM · email · LLM]
+```

@@ -1,0 +1,361 @@
+---
+title: Events and providers
+description: The EventBus abstraction and its domain events, the vendor adapter interfaces and their mocks, env switches, and how to build real adapters.
+icon: Plug
+---
+
+Two seams keep SellEasy's business logic independent of infrastructure and vendors:
+
+- **`EventBus`** (`backend/src/events/bus.ts`) publishes domain events. Today it is an in-process `EventEmitter`, and **nothing subscribes to it yet**.
+- **Provider adapters** (`backend/src/providers/index.ts`) wrap every external vendor: enrichment, CRM, email, LLM and connection testing. Only **mock** implementations exist. The `*_PROVIDER` env vars are validated, but any value other than `mock` logs a warning and falls back to the mock.
+
+## Event bus
+
+```ts title="src/events/bus.ts"
+export interface DomainEvents {
+  "signal.ingested": { orgId: string; signalId: string }
+  "account.created": { orgId: string; accountId: string }
+  "deal.stage_changed": { orgId: string; dealId: string; from: string; to: string }
+  "draft.approved": { orgId: string; draftId: string }
+}
+
+export interface EventBus {
+  publish<K extends keyof DomainEvents>(type: K, payload: DomainEvents[K]): Promise<void>
+  subscribe<K extends keyof DomainEvents>(type: K, handler: (payload: DomainEvents[K]) => void | Promise<void>): void
+}
+```
+
+| Event | Published by | When | Current subscribers |
+|---|---|---|---|
+| `signal.ingested` | `signalService.ingest` | After the signal and its activity are stored, before the autopilot check | none |
+| `account.created` | `accountService.create` | After the account and its activity are stored (manual create and import) | none |
+| `deal.stage_changed` | `pipelineService.move` | After the stage update and activity (also from `PATCH /deals/:id` with a new stage, `book-meeting`, and so on) | none |
+| `draft.approved` | — | **Declared but never published** | none |
+
+### `MemoryEventBus`
+
+- `publish` calls `emitter.emit(type, payload)`, which invokes listeners **synchronously** inside the publishing request.
+- `subscribe` wraps each handler in `Promise.resolve(handler(payload)).catch(...)`. Async failures are logged as `Event handler failed` and never reach the publisher. A handler that **throws synchronously** does propagate to the publisher.
+- `createBus()` logs `EVENT_BUS_DRIVER=<x> is not implemented yet; using in-memory bus` for any driver other than `memory`.
+- Events don't survive a restart and aren't shared between processes.
+
+The module exports a singleton: `export const bus = createBus()`. To subscribe, register the handler once at startup (for example in `server.ts`, before `listen`):
+
+```ts title="src/server.ts (example — not in the repo)"
+import { bus } from "./events/bus.js"
+import { logger } from "./lib/logger.js"
+
+bus.subscribe("deal.stage_changed", async ({ orgId, dealId, from, to }) => {
+  logger.info({ orgId, dealId, from, to }, "deal moved")
+})
+```
+
+### Target: EventBridge / SQS
+
+`.env.example` reserves `EVENT_BUS_DRIVER=memory | eventbridge | sqs`, `EVENTBRIDGE_BUS_NAME`, `EVENTBRIDGE_SOURCE`, `SQS_SIGNALS_QUEUE_URL`, `SQS_OUTREACH_QUEUE_URL` and `SNS_TOPIC_ARN`. A sketch of the EventBridge implementation:
+
+```ts title="src/events/eventbridge-bus.ts (sketch)"
+import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge"
+import type { DomainEvents, EventBus } from "./bus.js"
+
+export class EventBridgeBus implements EventBus {
+  private client = new EventBridgeClient({ region: process.env.AWS_REGION })
+
+  async publish<K extends keyof DomainEvents>(type: K, payload: DomainEvents[K]) {
+    const res = await this.client.send(new PutEventsCommand({
+      Entries: [{
+        EventBusName: process.env.EVENTBRIDGE_BUS_NAME,
+        Source: process.env.EVENTBRIDGE_SOURCE,   // "selleasy.api"
+        DetailType: type,                          // "signal.ingested"
+        Detail: JSON.stringify(payload),
+      }],
+    }))
+    if (res.FailedEntryCount) throw new Error(`EventBridge rejected ${type}`)
+  }
+
+  subscribe() {
+    // Consumers run in separate workers (SQS targets), not in the API process.
+    throw new Error("Use an SQS worker to consume EventBridge events")
+  }
+}
+```
+
+Then select it in `createBus()` when `config.EVENT_BUS_DRIVER === "eventbridge"`, and add `EVENTBRIDGE_BUS_NAME`, `EVENTBRIDGE_SOURCE` and `AWS_REGION` to the zod schema in `config.ts`. See [Orchestration agent](/docs/engineering/backend/orchestration-agent#moving-to-eventbridge--sqs--step-functions) for moving the agent onto that bus.
+
+<Callout type="warn" title="Publish after commit">
+With a remote bus, `publish` can fail after the database write has succeeded, which would silently drop the event. For guaranteed delivery, write events to an outbox table inside the same Postgres transaction and relay them to EventBridge.
+</Callout>
+
+## Provider adapters
+
+```ts title="src/providers/index.ts"
+export interface EnrichmentResult {
+  patch: Partial<Pick<Account, "employees" | "revenue" | "technologies" | "city" | "description" | "linkedinUrl" | "industry" | "fundingStage">>
+  sources: string[]
+}
+
+export interface EnrichmentProvider {
+  enrichAccount(account: Account, waterfall: string[]): Promise<EnrichmentResult>
+  findEmail(contact: Contact, domain: string): Promise<{ email: string | null; status: Contact["emailStatus"] }>
+}
+
+export interface CrmProvider {
+  readonly name: string
+  pushDeal(deal: Deal): Promise<{ crmId: string }>
+}
+
+export interface EmailProvider {
+  send(input: { from?: string; to: string; subject: string; body: string }): Promise<{ messageId: string }>
+}
+
+export interface LlmProvider {
+  draftOutreach(input: { account: Account; contact: Contact; signal?: Signal; senderName: string }): Promise<{ subject: string; body: string }>
+  suggestReply(input: { message: InboxMessage; contact?: Contact; senderName: string }): Promise<string>
+}
+
+export interface VendorConnectionTester {
+  test(integrationKey: string, apiKey: string): Promise<{ ok: boolean; message?: string }>
+}
+
+export const providers = {
+  enrichment: mockEnrichment,
+  crm: mockCrm(config.CRM_PROVIDER === "mock" ? "HubSpot" : config.CRM_PROVIDER),
+  email: mockEmail,
+  llm: mockLlm,
+  connections: mockTester,
+}
+```
+
+### Mock behaviour and call sites
+
+Every mock `sleep()`s to feel realistic. The delay is **0 ms when `NODE_ENV=test`**.
+
+| Provider | Mock behaviour | Called from |
+|---|---|---|
+| `enrichment.enrichAccount(account, waterfall)` | ~800 ms. Returns a patch with `employees` (or 50), **one extra technology** from `["Snowflake","Segment","HubSpot","Salesforce","Outreach","Gong"]` that the account doesn't have yet, `city` (or "San Francisco"), a templated `description`, and `linkedinUrl` built from the domain. Existing non-empty values are kept. `sources` is the first two waterfall names, or `["Clearbit"]` if the waterfall is empty. | `accountService.enrich` ← `POST /accounts/:id/enrich`, `/accounts/bulk-enrich`, agent `enrich` action |
+| `enrichment.findEmail(contact, domain)` | ~300 ms. Existing email: deterministic outcome, `invalid` when the sum of character codes is divisible by 9, otherwise `verified`. Missing email: guesses `first.last@domain` (ASCII only) and returns `verified`. | `contactService.verifyEmails` ← `POST /contacts/verify-emails` |
+| `crm.pushDeal(deal)` | Returns the existing `crmId`, or `"<first two letters of name, upper-cased>-<random 6 digits>"` (for example `HU-482913`). `name` is `"HubSpot"` for the `mock` provider, otherwise the `CRM_PROVIDER` value. | `pipelineService.syncCrm` ← `POST /deals/sync-crm` (requires a **connected** CRM integration record; pushes every deal without `syncedAt`) |
+| `email.send(input)` | Logs `mock email sent` at debug level. Returns `{ messageId: "mock-<timestamp>" }`. **Nothing is sent.** | Agent `draft_outreach` without approval, `approveDraft`, `outreachService.reply` (email channel only) |
+| `llm.draftOutreach(input)` | ~600 ms. With a signal: subject `"<Account>: <signal title in lower case>"` and a body that references the signal and account. Without a signal: a random opener subject and a generic value-prop body. Signed with `senderName`. | Agent `draft_outreach`, `regenerateDraft` |
+| `llm.suggestReply(input)` | ~500 ms. A template chosen by `message.sentiment`: positive (calendar link), negative (unsubscribe acknowledgement), ooo (follow up later), otherwise ask for an intro. | `POST /inbox/:id/suggest-reply` |
+| `connections.test(key, apiKey)` | ~700 ms. `ok` when `apiKey.length >= 8`, otherwise `API key looks invalid`. | `integrationService.connect` ← `POST /integrations/:id/connect` |
+
+<Callout type="info" title="What is not wired up">
+- `LINKEDIN_PROVIDER` / HeyReach: validated in `config.ts`, but there is no `LinkedInProvider` interface. LinkedIn drafts are "sent" through `providers.email`.
+- Intent vendors (Bombora, RB2B, Trigify): no pull adapters. Signals come in through `POST /webhooks/signals`.
+- `integrationService.sync` doesn't call any provider. It only bumps `lastSyncAt` and adds a random amount (0–150) to `usage.used`. The sync log returned by `GET /integrations/:id` is synthesized from `lastSyncAt` by `buildSyncLog`.
+- Per-org credentials stored in `integrations.apiKeyEncrypted` are never decrypted or passed to providers. Adapters would currently read env keys only.
+</Callout>
+
+## Environment switches
+
+| Variable | Allowed (zod) | Default | Effect today |
+|---|---|---|---|
+| `ENRICHMENT_PROVIDER` | `mock`, `live` | `mock` | Non-mock warns, uses the mock |
+| `CRM_PROVIDER` | `mock`, `hubspot`, `attio`, `salesforce` | `mock` | Non-mock warns, uses the mock. Also sets the mock's `name`. |
+| `EMAIL_PROVIDER` | `mock`, `ses`, `instantly`, `mailpool` | `mock` | Non-mock warns, uses the mock |
+| `LLM_PROVIDER` | `mock`, `anthropic` | `mock` | Non-mock warns, uses the mock |
+| `LINKEDIN_PROVIDER` | `mock`, `heyreach` | `mock` | Validated only; no warning |
+| `EVENT_BUS_DRIVER` | `memory`, `eventbridge`, `sqs` | `memory` | Non-memory warns, uses memory |
+| `ANTHROPIC_API_KEY` | string, optional | — | Unused |
+| `ANTHROPIC_MODEL` | string | `claude-opus-5` | Unused (the integration catalog's LLM settings also default `model` to `claude-opus-5`) |
+
+Vendor credential variables (`CLEARBIT_API_KEY`, `HUBSPOT_ACCESS_TOKEN`, `ANTHROPIC_FAST_MODEL`, `ANTHROPIC_MAX_TOKENS`, …) are listed in `.env.example` but are **not** in the `config.ts` schema yet. Add them there when you implement an adapter. See [Configuration](/docs/engineering/configuration).
+
+## Implementing a real adapter
+
+<Steps>
+<Step>
+### Create an adapter file per vendor
+
+Put each vendor in its own file, for example `src/providers/crm/hubspot.ts`, that implements the interface. Keep the mocks as the default.
+</Step>
+<Step>
+### Add config
+
+Add the vendor's env keys to the zod schema in `src/config.ts`. Use `.optional()` and validate them at selection time, so the app still boots with `mock`.
+</Step>
+<Step>
+### Select by env
+
+Replace the fixed object literal with factories:
+
+```ts title="src/providers/index.ts"
+// required(value, name): helper to add — throws a clear startup error when a key is missing
+function selectCrm(): CrmProvider {
+  switch (config.CRM_PROVIDER) {
+    case "hubspot":
+      return createHubSpotCrm({ token: required(config.HUBSPOT_ACCESS_TOKEN, "HUBSPOT_ACCESS_TOKEN") })
+    default:
+      warnUnimplemented("CRM_PROVIDER", config.CRM_PROVIDER)
+      return mockCrm(config.CRM_PROVIDER === "mock" ? "HubSpot" : config.CRM_PROVIDER)
+  }
+}
+
+export const providers = {
+  enrichment: mockEnrichment,
+  crm: selectCrm(),
+  email: mockEmail,
+  llm: selectLlm(),
+  connections: mockTester,
+}
+```
+</Step>
+<Step>
+### Handle failures deliberately
+
+- Throw `HttpError`s for user-actionable problems (`badRequest("HubSpot rejected the token")`). Unexpected errors become a `500`.
+- Inside the agent, a thrown error is recorded as a `failed` step, and the run continues.
+- Add timeouts and retries with back-off for 429 and 5xx responses. Never log credentials; the logger already redacts `*.apiKey`.
+</Step>
+<Step>
+### Decide between org and env credentials
+
+For multi-tenant vendor accounts, load the org's integration record and `decrypt(apiKeyEncrypted)` (`lib/crypto.ts`). That requires passing `orgId` into the adapter. The current interfaces don't take it, so extend them (for example `pushDeal(orgId, deal)`) and update the call sites.
+</Step>
+<Step>
+### Replace the connection tester
+
+Implement `VendorConnectionTester.test(key, apiKey)` with a cheap authenticated call per vendor, such as HubSpot `GET /account-info/v3/details`.
+</Step>
+<Step>
+### Test
+
+Keep `NODE_ENV=test` on the mocks. Add adapter unit tests that stub `fetch`.
+</Step>
+</Steps>
+
+### Example: HubSpot CRM provider
+
+```ts title="src/providers/crm/hubspot.ts (sketch)"
+import type { Deal } from "../../domain/types.js"
+import { badRequest } from "../../lib/errors.js"
+import type { CrmProvider } from "../index.js"
+
+const STAGE_MAP: Record<Deal["stage"], string> = {
+  discovery: "appointmentscheduled",
+  qualified: "qualifiedtobuy",
+  demo: "presentationscheduled",
+  proposal: "decisionmakerboughtin",
+  negotiation: "contractsent",
+  closed_won: "closedwon",
+  closed_lost: "closedlost",
+}
+
+export function createHubSpotCrm({ token }: { token: string }): CrmProvider {
+  const call = async (method: string, path: string, body: unknown) => {
+    const res = await fetch(`https://api.hubapi.com${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (res.status === 401) throw badRequest("HubSpot rejected the access token")
+    if (!res.ok) throw new Error(`HubSpot ${method} ${path} failed: ${res.status}`)
+    return res.json() as Promise<{ id: string }>
+  }
+
+  return {
+    name: "HubSpot",
+    async pushDeal(deal) {
+      const properties = {
+        dealname: deal.name,
+        amount: String(deal.amount),
+        dealstage: STAGE_MAP[deal.stage],
+        closedate: deal.closeDate,
+      }
+      // Update when already synced, otherwise create.
+      const out = deal.crmId
+        ? await call("PATCH", `/crm/v3/objects/deals/${deal.crmId}`, { properties })
+        : await call("POST", "/crm/v3/objects/deals", { properties })
+      return { crmId: out.id }
+    },
+  }
+}
+```
+
+`pipelineService.syncCrm` already stores `crmId` and `syncedAt` from the return value. Associating the HubSpot company and contact (by `account.domain` / `contact.email`) is a follow-up; the interface only passes the `Deal` today.
+
+### Example: Anthropic LLM provider
+
+This example uses the official `@anthropic-ai/sdk` (`npm i @anthropic-ai/sdk`) and the Messages API. The model id comes from `ANTHROPIC_MODEL` (default `claude-opus-5`).
+
+```ts title="src/providers/llm/anthropic.ts (sketch)"
+import Anthropic from "@anthropic-ai/sdk"
+import type { LlmProvider } from "../index.js"
+
+const SYSTEM = `You write concise, personalized B2B sales emails (under 120 words, no hype, one clear ask).
+Reply in exactly this format:
+Subject: <subject line>
+
+<email body>`
+
+export function createAnthropicLlm(opts: { apiKey: string; model: string; maxTokens: number }): LlmProvider {
+  const client = new Anthropic({ apiKey: opts.apiKey })
+
+  async function complete(prompt: string): Promise<string> {
+    const response = await client.messages.create({
+      model: opts.model,                 // config.ANTHROPIC_MODEL, e.g. "claude-opus-5"
+      max_tokens: opts.maxTokens,
+      system: SYSTEM,
+      messages: [{ role: "user", content: prompt }],
+    })
+    if (response.stop_reason === "refusal") throw new Error("The model declined to draft this message")
+    // content is a union of block types — keep only text blocks
+    return response.content
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("")
+      .trim()
+  }
+
+  return {
+    async draftOutreach({ account, contact, signal, senderName }) {
+      const text = await complete(
+        [
+          `Recipient: ${contact.firstName} ${contact.lastName}, ${contact.title} (${contact.department}) at ${account.name}.`,
+          `Company: ${account.industry}, ${account.employees} employees, ${account.country}. ${account.description}`,
+          signal ? `Trigger: ${signal.title} — ${signal.detail} (source: ${signal.source}).` : "No specific trigger.",
+          `Sign off as ${senderName}.`,
+        ].join("\n"),
+      )
+      const match = text.match(/^Subject:\s*(.+)\n+([\s\S]*)$/)
+      return match
+        ? { subject: match[1].trim(), body: match[2].trim() }
+        : { subject: `Quick idea for ${account.name}`, body: text }
+    },
+
+    async suggestReply({ message, contact, senderName }) {
+      const text = await complete(
+        `Write a short reply to this ${message.sentiment} message from ` +
+          `${contact?.firstName ?? "a prospect"}:\n\n${message.body}\n\nSign off as ${senderName}.`,
+      )
+      return text.replace(/^Subject:.*\n+/, "") // the system prompt always yields a subject line; drop it
+    },
+  }
+}
+```
+
+Wire it up in `selectLlm()`:
+
+```ts title="src/providers/index.ts"
+function selectLlm(): LlmProvider {
+  if (config.LLM_PROVIDER === "anthropic") {
+    return createAnthropicLlm({
+      apiKey: required(config.ANTHROPIC_API_KEY, "ANTHROPIC_API_KEY"),
+      model: config.ANTHROPIC_MODEL,
+      maxTokens: config.ANTHROPIC_MAX_TOKENS, // add to config.ts: z.coerce.number().default(1024)
+    })
+  }
+  return mockLlm
+}
+```
+
+<Callout type="info" title="Notes for the LLM adapter">
+- The SDK retries 408, 409, 429 and 5xx responses twice by default. Timeouts are in **milliseconds** in the TypeScript SDK (`new Anthropic({ timeout: 30_000 })`).
+- Catch typed errors (`Anthropic.RateLimitError`, `Anthropic.AuthenticationError`, `Anthropic.APIError`) instead of matching message strings. Map authentication failures to a clear `badRequest`.
+- Check `stop_reason` before reading content. `refusal` means the model declined. For `claude-opus-5`, consider the server-side refusal fallback option (see the Claude API docs).
+- `.env.example` sets `ANTHROPIC_MAX_TOKENS=1024`, which is enough for short emails. Raise it if you ask for longer output, since hitting the cap truncates the text.
+- `ANTHROPIC_FAST_MODEL` (`claude-haiku-4-5`) is reserved for cheap, high-volume calls such as reply suggestions or classification. Pass it as `model` for those calls.
+- Keep the system prompt stable so it can be cached (prompt caching) once prompts grow.
+- The integration catalog's `anthropic` record (`settings.model`, `settings.tokenBudget`) could override the env defaults per org once adapters receive `orgId`.
+</Callout>

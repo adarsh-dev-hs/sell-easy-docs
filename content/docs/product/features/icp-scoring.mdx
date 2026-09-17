@@ -1,0 +1,130 @@
+---
+title: ICP & scoring
+description: Define the ideal customer profile and scoring weights, check the live what-if preview, then save to re-score every account.
+icon: Gauge
+---
+
+The **ICP & Scoring** screen (`/scoring`) controls how every account is scored. You describe your ideal customer (industries, countries, size, revenue, technologies, funding), set how much **fit** counts against **intent**, choose how much each signal type matters and how fast intent fades, and set the tier cut-offs. A **live preview** re-scores all accounts with your draft before anything is saved.
+
+**Who uses it:** RevOps (admins can save). Anyone can use the preview to explore what-if scenarios.
+
+## Page layout
+
+| Card | Contents |
+|---|---|
+| **Firmographic fit** | Industries, countries, min/max employees, min revenue ($M), technologies, funding stages |
+| **Weights** | Fit vs intent slider, intent half-life, one weight slider per signal type |
+| **Tier thresholds** | Minimum score for A, B and C, with sliders, number inputs and a colour bar showing the D/C/B/A bands |
+| **How scoring works** | The formulas, filled in with your current draft values |
+| **Live preview** | Tier changes, promoted/demoted counts, average score and delta, Current vs Draft tier chart |
+| **Top 10 accounts** | Ranked by draft score, with delta and the previous tier when it changed |
+
+The header shows **Unsaved changes** when the draft differs from the saved configuration, plus the time it was last saved. The actions are **Reset to defaults**, **Discard** and **Save & re-score** (admins only).
+
+## Settings reference
+
+<TypeTable
+  type={{
+    industries: { type: 'string[]', description: 'Industries that earn the 25-point industry match. At least one is required. Chosen from SaaS, Fintech, Healthcare, E-commerce, Cybersecurity, Logistics, Manufacturing, EdTech, Media, Real Estate.', default: 'SaaS, Fintech, Cybersecurity, E-commerce' },
+    countries: { type: 'string[]', description: 'Countries that earn the 15-point geography match. Chosen from United States, United Kingdom, Germany, Canada, India, Australia, France, Netherlands.', default: 'United States, United Kingdom, Canada, Germany' },
+    employeeMin: { type: 'integer ≥ 0', description: 'Lower bound of the ideal size range. Must be ≤ employeeMax.', default: '50' },
+    employeeMax: { type: 'integer ≥ 0', description: 'Upper bound of the ideal size range.', default: '2000' },
+    revenueMin: { type: 'number ≥ 0 (USD)', description: 'Minimum revenue for the 15-point revenue match. The UI edits it in $M (0.5 steps).', default: '5000000' },
+    technologies: { type: 'string[]', description: 'Each matching technology earns 5 points, up to 15. Chosen from Salesforce, HubSpot, Snowflake, AWS, GCP, Segment, Stripe, Zendesk, Intercom, Marketo, Outreach, Gong, Slack, Okta.', default: 'Salesforce, HubSpot, Snowflake, Segment, Outreach' },
+    fundingStages: { type: 'string[]', description: 'Stages that earn the 10-point funding match. Chosen from Bootstrapped, Seed, Series A–D+, Public.', default: 'Series A, B, C, D+' },
+    fitWeight: { type: '0–100', description: 'Share of the combined score that comes from fit. Intent gets the rest (100 − fitWeight).', default: '55' },
+    intentDecayDays: { type: '1–365 days (UI slider 1–60)', description: 'Half-life. A signal loses half its value every N days and is ignored after 3N days.', default: '14' },
+    signalWeights: { type: '0–100 per type', description: 'Multiplier applied to each signal\'s strength. 0 means the signal type is ignored.', default: 'intent 70 · web 90 · hiring 60 · funding 75 · job change 80 · tech 45 · social 35 · news 30' },
+    tierThresholds: { type: '{ A, B, C } each 0–100', description: 'Minimum combined score for each tier, with A > B > C. Anything below C is Tier D.', default: 'A 70 · B 52 · C 35' },
+  }}
+/>
+
+## How the score is calculated
+
+```text
+fit    = industry(25) + size(20, or 8 if within 50%–150% of range) + geography(15)
+         + revenue(15) + tech(5 per match, max 15) + funding(10)            → 0–100
+
+intent = min(100, Σ strength × weight(type)/100 × 0.5^(age / halfLife) × 0.45)
+         (signals older than 3 × halfLife are ignored)                      → 0–100
+
+score  = round( fit × fitWeight/100 + intent × (1 − fitWeight/100) )
+tier   = A ≥ A-threshold > B ≥ B-threshold > C ≥ C-threshold > D
+```
+
+[Core concepts](/docs/product/core-concepts#worked-example-default-icp) walks through a full example.
+
+## Validation rules
+
+The page checks the draft as you edit, and the API checks it again on save. Errors appear in a red alert and disable **Save**.
+
+| Rule | Checked by |
+|---|---|
+| At least one industry | UI + API |
+| Min employees ≤ max employees | UI + API |
+| Employee counts and minimum revenue ≥ 0 | UI + API |
+| Tier thresholds strictly descending: A > B > C | UI + API |
+| Tier C threshold > 0 | UI only (the API accepts 0) |
+| Half-life ≥ 1 day | UI + API (the API also caps it at 365) |
+| Each weight and threshold between 0 and 100 | UI (sliders and clamped inputs) + API |
+
+If the server rejects a configuration, its field errors are listed under "The server rejected this configuration".
+
+## Live preview
+
+<Steps>
+<Step>Edit any setting. After a **400 ms** pause, the draft is sent to `POST /icp/preview`. Drafts that fail validation aren't sent, and the last valid result stays on screen with a spinner while the new one loads.</Step>
+<Step>
+
+The API scores every **non-duplicate** account twice, once with the **saved** ICP and once with the **draft**, using all signals as of now. It returns:
+
+- **tier changes**: accounts whose tier would change, split into **↑ promoted** (for example C → B) and **↓ demoted**;
+- **avg score**: the draft average and its change from the current average;
+- **distribution**: account counts per tier, current vs draft;
+- **top 10**: accounts with the highest draft scores, with delta and previous tier.
+
+</Step>
+<Step>Nothing is saved. Viewers and members can use the preview as a what-if tool, and the page says "Only workspace admins can save changes".</Step>
+</Steps>
+
+## Saving
+
+<Steps>
+<Step>Click **Save & re-score** (admins only). The whole configuration is replaced.</Step>
+<Step>The API re-scores **every** account (duplicates included). Each gets a score history point with reason **"ICP configuration updated"**.</Step>
+<Step>A message reports *"ICP saved — N accounts changed score or tier"*. The page reloads the saved configuration.</Step>
+</Steps>
+
+<Callout type="info">
+The bulk re-score on save does **not** log a `score_change` activity for each account. Only individual re-scores do. The history point is always recorded.
+</Callout>
+
+**Reset to defaults** loads the default ICP into the **draft** after you confirm. You still need to save. **Discard** returns the draft to the saved configuration.
+
+## Effects elsewhere
+
+- **Playbooks** match on the tier and score calculated at the moment a signal is processed. After you change thresholds, new signals follow the new tiers right away.
+- The **account page** breakdown and intent contributors always use the saved ICP.
+- **Analytics → Tier performance** groups accounts by their stored tier, so it reflects the most recent re-score.
+
+## Permissions
+
+| Action | Viewer | Member | Admin | Owner |
+|---|:-:|:-:|:-:|:-:|
+| View ICP and defaults | ✔ | ✔ | ✔ | ✔ |
+| Live preview | ✔ | ✔ | ✔ | ✔ |
+| Save & re-score | – | – | ✔ | ✔ |
+
+## Edge cases & limitations
+
+- There is one ICP per workspace. Segment-specific ICPs aren't supported.
+- The pick lists for industries, countries, technologies and funding stages are fixed product constants. Accounts with other values (for example from an import) never match those criteria.
+- Intent is only recalculated when an account is re-scored, so stored intent doesn't fade by itself between signals. Save the ICP or use **Re-score** to refresh it.
+- The preview's *current* column is recalculated now. It can differ from the stored score if intent has decayed since the account was last scored.
+- The ICP has no version history. Only `updatedAt` is kept.
+
+## Related
+
+- [Core concepts → Scoring](/docs/product/core-concepts#scoring)
+- [User journey: RevOps tunes the ICP](/docs/product/user-journeys#d-revops-tunes-the-icp-with-live-preview)
+- [Scoring engine (engineering)](/docs/engineering/backend/scoring-engine)

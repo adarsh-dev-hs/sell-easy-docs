@@ -1,0 +1,481 @@
+---
+title: Accounts and contacts
+description: Endpoints for companies and people, covering CRUD, filtering, deduplication, enrichment, re-scoring, enrollment and related records.
+icon: Building2
+---
+
+Accounts (companies) and contacts (people) form the entity service. The code is in `backend/src/modules/accounts/` and `backend/src/modules/contacts/`. To bulk-load data, use the [Import API](/docs/engineering/api/import).
+
+Unless an endpoint says otherwise, `GET` routes need **viewer** or higher and write routes need **member** or higher.
+
+## Accounts
+
+### The account object
+
+<TypeTable
+  type={{
+    id: { type: 'string', description: 'acc_… identifier.' },
+    name: { type: 'string', description: 'Company name.' },
+    domain: { type: 'string', description: 'Normalized domain: lowercase, with the protocol, "www." and any path removed. Used for deduplication and for matching webhook signals.' },
+    industry: { type: 'string', description: 'Defaults to "Other".' },
+    employees: { type: 'number', description: 'Headcount. Defaults to 0.' },
+    revenue: { type: 'number', description: 'Annual revenue in USD. If not provided, set to employees × 120,000.' },
+    'country / city': { type: 'string', description: 'Location.' },
+    technologies: { type: 'string[]', description: 'Tech stack.' },
+    fundingStage: { type: 'string', description: 'For example "Series B".' },
+    'description / linkedinUrl': { type: 'string', description: 'Free text.' },
+    ownerId: { type: 'string | null', description: 'Owning user. null means unassigned.' },
+    stage: { type: '"new" | "researching" | "engaged" | "opportunity" | "customer" | "disqualified"', description: 'Lifecycle stage. Defaults to "new".' },
+    'fitScore / intentScore / score': { type: 'number (0–100)', description: 'Computed by the scoring engine. Read-only.' },
+    tier: { type: '"A" | "B" | "C" | "D"', description: 'Derived from score and the ICP tier thresholds. Read-only.' },
+    scoreHistory: { type: 'ScorePoint[]', description: 'The last 20 score changes, each with fit, intent, score and reason.' },
+    versions: { type: 'EntityVersion[]', description: 'Change log with a field-level diff. Version 1 is the creation.' },
+    'enrichedAt / enrichmentSources': { type: 'string / string[]', description: 'When enrichment last ran and which vendors it used.' },
+    tags: { type: 'string[]', description: 'Free-form labels.' },
+    duplicateOf: { type: 'string?', description: 'Set when the account is flagged as a duplicate of an existing account with the same domain.' },
+  }}
+/>
+
+### Writable fields
+
+`POST /accounts` and `PATCH /accounts/:id` accept these fields. For `PATCH`, every field is optional.
+
+| Field | Validation |
+|---|---|
+| `name` | string, 1–200, **required on create** |
+| `domain` | string, 3–253, **required on create**. After normalization it must contain a `.`. |
+| `industry` | string, at most 100 |
+| `employees` | integer, 0–10,000,000 (coerced from strings) |
+| `revenue` | number, at least 0 (coerced) |
+| `country`, `city` | string, at most 100 |
+| `technologies` | string[], at most 100 items |
+| `fundingStage` | string, at most 50 |
+| `description` | string, at most 5000 |
+| `linkedinUrl` | string, at most 500 |
+| `ownerId` | string or `null` |
+| `stage` | account stage enum |
+| `tags` | string[], at most 50 items |
+
+### `GET /accounts`
+
+Lists accounts. Paginated.
+
+| Query | Type | Description |
+|---|---|---|
+| `page`, `pageSize`, `q` | — | Standard. `q` matches `name` or `domain`. |
+| `sort` | `field:dir` | Allowed fields: `name`, `score`, `intentScore`, `fitScore`, `employees`, `updatedAt`, `createdAt`, `enrichedAt`. **Default:** `score:desc`, with ties broken by `name:asc`. |
+| `view` | `all` \| `mine` \| `unassigned` \| `duplicates` | `mine` means owned by the caller. `unassigned` means `ownerId` is null. `duplicates` returns only flagged duplicates. `all` **hides** flagged duplicates. |
+| `excludeDuplicates` | boolean | Hides flagged duplicates. Use it when no `view` is set. |
+| `tier` | CSV of `A,B,C,D` | |
+| `industry`, `country` | CSV | Exact match |
+| `stage` | CSV of account stages | |
+| `ownerId` | string | A user ID, or `none` for unassigned. `view=mine` and `view=unassigned` take precedence. |
+
+```bash
+curl -s "http://localhost:4000/api/v1/accounts?view=all&tier=A,B&sort=score:desc&pageSize=1" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```json title="200 response (trimmed)"
+{
+  "data": [
+    {
+      "id": "acc_8f8db25",
+      "name": "Polaris Labs",
+      "domain": "polarislabs.com",
+      "industry": "Cybersecurity",
+      "employees": 6006,
+      "revenue": 1105104000,
+      "country": "United Kingdom",
+      "city": "London",
+      "technologies": ["Zendesk", "Segment", "Slack", "Stripe", "AWS"],
+      "fundingStage": "Series A",
+      "ownerId": "usr_nm78EMj0",
+      "stage": "researching",
+      "fitScore": 70,
+      "intentScore": 100,
+      "score": 84,
+      "tier": "A",
+      "scoreHistory": [{ "at": "2026-09-17T13:12:46.870Z", "fit": 70, "intent": 100, "score": 84, "reason": "Latest signals processed" }],
+      "enrichedAt": "2026-08-21T13:12:46.870Z",
+      "enrichmentSources": ["Apify", "Apollo.io"],
+      "versions": [{ "version": 1, "at": "2026-06-15T13:12:46.870Z", "source": "Apollo.io import", "changes": [{ "field": "record", "from": "—", "to": "created" }] }],
+      "tags": [],
+      "orgId": "org_n5VxwIp6",
+      "createdAt": "2026-06-15T13:12:46.870Z",
+      "updatedAt": "2026-09-13T13:12:46.870Z"
+    }
+  ],
+  "meta": { "total": 28, "page": 1, "pageSize": 1 }
+}
+```
+
+### `GET /accounts/counts`
+
+Returns the counts shown on the list tabs. **Not paginated.**
+
+```json title="200 response"
+{ "data": { "all": 64, "mine": 18, "unassigned": 9, "duplicates": 2 } }
+```
+
+`all` leaves out flagged duplicates. `unassigned` and `mine` include them.
+
+### `GET /accounts/duplicates`
+
+Lists every flagged duplicate next to its canonical record. Returns an array, newest first, **not paginated**.
+
+```json title="200 response (shape)"
+{
+  "data": [
+    {
+      "duplicate": { "id": "acc_dup_2f8db25", "name": "LUMEN SECURITY", "duplicateOf": "acc_11f8db25", "contactCount": 0, "source": "HubSpot sync", "...": "..." },
+      "canonical": { "id": "acc_11f8db25", "name": "Lumen Security", "contactCount": 3, "source": "Apollo.io import", "...": "..." }
+    }
+  ]
+}
+```
+
+`source` is the `source` of the record's first version. `canonical` is `null` if the canonical account has been deleted.
+
+### `POST /accounts`
+
+Creates an account. **Status:** `201`.
+
+**Behaviour:**
+
+- Normalizes `domain`. Returns `400 "Domain must look like example.com"` if the result has no dot.
+- **Duplicate detection:** if a non-duplicate account already has the same domain, the new account is still created, but with `duplicateOf` set to that account's ID. The response then includes `duplicateOf: { id, name }`.
+- Scores the account against the ICP (intent is 0 because it has no signals), stores an initial `scoreHistory` entry and version 1, logs an "Account created" activity and publishes `account.created`.
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/accounts \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"name":"Acme Corp","domain":"https://www.acme.com/","industry":"SaaS","employees":250,"country":"United States","technologies":["Salesforce","Snowflake"]}'
+```
+
+```json title="201 response (shape)"
+{ "data": { "account": { "id": "acc_…", "domain": "acme.com", "score": 41, "tier": "C", "...": "..." }, "duplicateOf": null } }
+```
+
+### `GET /accounts/:id`
+
+Returns one account with a `related` block. **Errors:** `404 "Account not found"`.
+
+```json title="related block"
+{ "related": { "contacts": 4, "signals": 11, "deals": 2, "openDeals": 1, "openPipeline": 48000 } }
+```
+
+`openPipeline` is the sum of `amount` over the account's deals that aren't closed.
+
+### `PATCH /accounts/:id`
+
+Updates an account.
+
+**Behaviour:**
+
+- Normalizes `domain` if you send it.
+- Appends an `EntityVersion` with source `"Manual edit"` for each field whose value actually changes. Score fields, `scoreHistory` and `versions` aren't versioned.
+- If `industry`, `employees`, `revenue`, `country`, `technologies` or `fundingStage` changes, the account is **re-scored** and `rescore` is filled in.
+
+```json title="200 response (shape)"
+{ "data": { "account": { "...": "..." }, "rescore": { "before": 41, "after": 58, "tier": "B" } } }
+```
+
+`rescore` is `null` when no scoring field changed.
+
+### `DELETE /accounts/:id`
+
+Deletes an account and **everything linked to it**: its contacts (with their enrollments and inbox messages), deals, signals, drafts, agent runs and activities. Accounts that were flagged as duplicates of this one become standalone records. **Status:** `204`. **Errors:** `404`.
+
+### `POST /accounts/bulk-delete`
+
+Runs the same cascade as the single delete for many accounts. **Status:** `200`.
+
+| Body | Type |
+|---|---|
+| `ids` | string[], 1–1000 items |
+
+```json title="200 response"
+{ "data": { "deleted": 3 } }
+```
+
+IDs that don't exist are skipped silently.
+
+### `POST /accounts/bulk-assign`
+
+Sets the owner of many accounts **and of all their contacts**. Each changed account gets a version entry with source `"Owner assignment"`. **Status:** `200`.
+
+| Body | Type | Notes |
+|---|---|---|
+| `ids` | string[], 1–1000 items | |
+| `ownerId` | string \| `null` | `null` unassigns the accounts. The user must belong to your org, otherwise `400 "Owner not found in this organization"`. |
+
+```json title="200 response"
+{ "data": { "updated": 2 } }
+```
+
+`updated` is the number of IDs you sent, not the number that existed.
+
+### `POST /accounts/bulk-enrich`
+
+Runs **waterfall enrichment** on many accounts. **Status:** `200`.
+
+The waterfall is the list of connected `enrichment` and `contacts` integrations with `useInWaterfall` not set to `false`, in the org's `waterfallOrder`. For each account, the enrichment provider returns a patch, the account is updated (with a version entry and a re-score if needed), `enrichedAt` and `enrichmentSources` are updated, and an `enrichment` activity is logged.
+
+<Callout type="warn" title="Mocked">
+The enrichment provider is always the mock, whatever `ENRICHMENT_PROVIDER` is set to. It fills in a missing `employees` (with 50), `city`, `description` and `linkedinUrl`, adds one technology, and reports the first two waterfall vendors (or "Clearbit" if the waterfall is empty) as the sources. Each account takes about 800 ms.
+</Callout>
+
+```json title="200 response"
+{ "data": { "enriched": 1, "results": [{ "id": "acc_…", "sources": ["Clearbit", "Apollo.io"], "rescore": null }] } }
+```
+
+### `POST /accounts/bulk-rescore`
+
+Re-scores many accounts with the reason `"Manual re-score"`. **Status:** `200`.
+
+```json title="200 response"
+{ "data": { "results": [{ "id": "acc_…", "before": 41, "after": 44, "tier": "C" }] } }
+```
+
+If an ID doesn't exist, its result is `before: 0, after: 0, tier: "D"`.
+
+### `POST /accounts/bulk-enroll`
+
+Enrolls **all contacts** of the given accounts in a sequence. **Status:** `200`.
+
+| Body | Type |
+|---|---|
+| `ids` | string[], 1–1000 items (account IDs) |
+| `sequenceId` | string |
+
+The response is the standard enrollment result. See [enrollment rules](#enrollment-rules).
+
+### `POST /accounts/:id/enrich`
+
+Enriches a single account. **Status:** `200`. **Errors:** `404`.
+
+```json title="200 response (shape)"
+{ "data": { "id": "acc_…", "sources": ["Clearbit", "Apollo.io"], "rescore": null, "account": { "...": "..." } } }
+```
+
+### `POST /accounts/:id/rescore`
+
+Re-scores a single account. **Status:** `200`.
+
+```json title="200 response (shape)"
+{ "data": { "before": 70, "after": 73, "tier": "A", "account": { "...": "..." } } }
+```
+
+If the score changes, a `score_change` activity is logged.
+
+### `POST /accounts/:id/merge`
+
+Merges a **flagged duplicate** into its canonical account. **Status:** `200`.
+
+**Behaviour:** moves the duplicate's contacts, signals, deals, activities, drafts and runs to the canonical account. Then it deletes the duplicate, unions the `tags` and `technologies`, keeps the canonical owner (or takes the duplicate's owner if the canonical has none), logs a note and re-scores the canonical account. The response is the updated canonical account.
+
+**Errors:** `409 "Account is not flagged as a duplicate"`; `404 "Canonical account not found"`.
+
+### `POST /accounts/:id/dismiss-duplicate`
+
+Clears `duplicateOf`, so the record counts as a real account. **Status:** `200`. Returns the account.
+
+### `POST /accounts/:id/enroll`
+
+Enrolls this account's contacts in a sequence. **Status:** `200`.
+
+| Body | Type | Notes |
+|---|---|---|
+| `sequenceId` | string | required |
+| `contactIds` | string[] | Optional. Limits the enrollment to these contacts of the account. |
+
+### `GET /accounts/:id/score-breakdown`
+
+Explains how the account's score was computed. The fit side has six criteria and the intent side lists the signals that contribute.
+
+```json title="200 response (trimmed)"
+{
+  "data": {
+    "fit": [
+      { "label": "Industry", "max": 25, "matched": true, "points": 25, "detail": "Cybersecurity" },
+      { "label": "Company size", "max": 20, "matched": false, "points": 0, "detail": "6,006 employees" },
+      { "label": "Geography", "max": 15, "matched": true, "points": 15, "detail": "United Kingdom" },
+      { "label": "Revenue", "max": 15, "matched": true, "points": 15, "detail": "$1105.1M" },
+      { "label": "Tech stack", "max": 15, "matched": true, "points": 5, "detail": "Segment" },
+      { "label": "Funding stage", "max": 10, "matched": true, "points": 10, "detail": "Series A" }
+    ],
+    "fitScore": 70,
+    "intentScore": 100,
+    "score": 84,
+    "fitWeight": 55,
+    "intentDecayDays": 14,
+    "contributors": [
+      { "signal": { "id": "sig_180f8db25", "type": "website_visit", "strength": 66, "...": "..." }, "weight": 0.9, "decay": 0.92, "points": 24.6 }
+    ]
+  }
+}
+```
+
+`contributors` lists at most 20 signals that still carry points, newest first. See [Scoring engine](/docs/engineering/backend/scoring-engine) for the formulas.
+
+### `GET /accounts/:id/versions`
+
+Returns the version history, **newest first**. It's a plain array of `{ version, at, source, changes: [{ field, from, to }] }`.
+
+### `GET /accounts/:id/contacts`
+
+Returns the account's contacts, sorted by `firstName`. Plain array, **not paginated**.
+
+### `GET /accounts/:id/signals`
+
+Returns the account's signals, newest first (by `occurredAt`). Each signal has a `contact` summary attached. Plain array.
+
+### `GET /accounts/:id/deals`
+
+Returns the account's deals, sorted by `updatedAt` descending. Plain array.
+
+### `GET /accounts/:id/activities`
+
+Returns the account's activity timeline, newest first. **Paginated:** `page` (default 1) and `pageSize` (1–200, default 50).
+
+## Contacts
+
+### The contact object
+
+<TypeTable
+  type={{
+    id: { type: 'string', description: 'con_… identifier.' },
+    accountId: { type: 'string', description: 'Parent account.' },
+    'firstName / lastName': { type: 'string', description: 'Name.' },
+    title: { type: 'string', description: 'Job title.' },
+    seniority: { type: '"C-Level" | "VP" | "Director" | "Manager" | "IC"', description: 'Defaults to "IC". The agent uses it to pick the most senior contact.' },
+    department: { type: 'string', description: 'Department.' },
+    email: { type: 'string', description: 'Stored in lowercase. Can be an empty string.' },
+    emailStatus: { type: '"verified" | "unverified" | "invalid" | "missing"', description: 'On create: "unverified" if there is an email, otherwise "missing".' },
+    'phone / linkedinUrl / location': { type: 'string', description: 'location defaults to the account\'s "city, country".' },
+    ownerId: { type: 'string | null', description: "Defaults to the account's owner." },
+    status: { type: '"new" | "in_sequence" | "replied" | "meeting" | "unsubscribed" | "bounced"', description: 'Engagement status. Enrollment, draft approval and meeting booking update it.' },
+    lastContactedAt: { type: 'string?', description: 'When the contact was last emailed or replied to.' },
+  }}
+/>
+
+Contact list and detail responses also include an `account` summary: `{ id, name, domain, tier, score, industry }`.
+
+### `GET /contacts`
+
+Lists contacts, each with its `account`. Paginated.
+
+| Query | Type | Description |
+|---|---|---|
+| `page`, `pageSize` | — | Standard |
+| `q` | string | Matches `firstName`, `lastName`, `email` or `title` |
+| `sort` | `field:dir` | Allowed fields: `firstName`, `lastName`, `title`, `seniority`, `status`, `emailStatus`, `lastContactedAt`, `createdAt`. **Default:** `firstName:asc`. Sorting by `firstName` also sorts by `lastName` in the same direction. |
+| `accountId` | string | |
+| `seniority` | CSV | `C-Level,VP,Director,Manager,IC` |
+| `emailStatus` | CSV | `verified,unverified,invalid,missing` |
+| `status` | CSV | Contact status values |
+| `ownerId` | string | |
+
+```bash
+curl -s "http://localhost:4000/api/v1/contacts?seniority=C-Level,VP&emailStatus=verified&pageSize=20" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### `POST /contacts`
+
+Creates a contact. **Status:** `201`.
+
+| Field | Validation |
+|---|---|
+| `accountId` | string, **required**. Must exist, otherwise `400 "Account not found"`. |
+| `firstName`, `lastName` | string, 1–100, **required** |
+| `title` | string, at most 200 |
+| `seniority` | seniority enum |
+| `department` | string, at most 100 |
+| `email` | a valid email or `""` |
+| `phone` | string, at most 50 |
+| `linkedinUrl` | string, at most 500 |
+| `location` | string, at most 200 |
+| `ownerId` | string \| `null` |
+| `status` | contact status enum |
+
+**Behaviour:** the email is stored in lowercase. If it's already used by another contact in the org, the API returns `400 "A contact with <email> already exists"`. A note activity is logged.
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/contacts \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"accountId":"acc_8f8db25","firstName":"Jane","lastName":"Doe","title":"VP of Sales","seniority":"VP","email":"jane.doe@polarislabs.com"}'
+```
+
+### `GET /contacts/:id`
+
+Returns one contact with its `account` summary. **Errors:** `404 "Contact not found"`.
+
+### `PATCH /contacts/:id`
+
+Updates a contact. Every field from `POST` is optional.
+
+**Behaviour:**
+
+- If the email changes, `emailStatus` is reset to `unverified`, or to `missing` if the new email is empty, unless you also send `emailStatus`.
+- Moving the contact to another `accountId` checks that the account exists.
+- This endpoint doesn't check for duplicate emails.
+
+Returns the updated contact **without** the `account` summary.
+
+### `DELETE /contacts/:id`
+
+Deletes a contact along with its enrollments, drafts and inbox messages. **Status:** `204`.
+
+### `POST /contacts/bulk-delete`
+
+Runs the same cascade for many contacts. Body: `{ "ids": string[] }`. **Status:** `200`. Returns `{ "deleted": n }`.
+
+### `POST /contacts/verify-emails`
+
+Verifies emails, or finds missing ones, through the enrichment provider. Body: `{ "ids": string[] }`. **Status:** `200`.
+
+```json title="200 response"
+{ "data": { "processed": 3, "verified": 2, "invalid": 0, "found": 1 } }
+```
+
+`found` counts contacts that had no email before and have one now.
+
+<Callout type="warn" title="Mocked">
+The mock provider's result is deterministic. It marks an existing email `invalid` when the sum of the address's character codes is divisible by 9, which is about one address in nine, and `verified` otherwise. For contacts without an email, it makes up `first.last@<account domain>` and marks it `verified`.
+</Callout>
+
+### `POST /contacts/enroll`
+
+Enrolls contacts in a sequence. **Status:** `200`.
+
+| Body | Type |
+|---|---|
+| `contactIds` | string[], 1–1000 items |
+| `sequenceId` | string |
+
+### `GET /contacts/:id/enrollments`
+
+Returns the contact's sequence enrollments, newest first. Each one has a `sequence` summary attached: `{ id, name, status, stepCount }`, or `null` if the sequence is gone. Plain array.
+
+### `GET /contacts/:id/activities`
+
+Returns the contact's activity. **Paginated:** `page` and `pageSize` (1–200, default 50).
+
+## Enrollment rules
+
+`POST /contacts/enroll`, `POST /accounts/bulk-enroll`, `POST /accounts/:id/enroll` and `POST /sequences/:id/enroll` all use `enrollmentService.enroll`:
+
+1. The sequence must exist (`404 "Sequence not found"`) and have at least one step (`400 "Sequence has no steps"`).
+2. Duplicate contact IDs in the request are removed.
+3. Contacts are **skipped** if their `status` is `unsubscribed` or `bounced`, if their `emailStatus` is `invalid`, or if they're already **actively** enrolled in this sequence. Unknown IDs are also counted as skipped.
+4. For each eligible contact, the API creates an enrollment (`status: "active"`, `currentStep: 0`, `enrolledAt` and `nextStepAt` set to now), sets the contact's `status` to `in_sequence`, and adds to the sequence's `stats.enrolled`.
+
+```json title="Enrollment result"
+{ "data": { "enrolled": 2, "skipped": 1, "enrolledIds": ["con_…", "con_…"], "sequence": { "id": "seq_…", "name": "High intent – pricing visitors" } } }
+```
+
+<Callout type="info" title="Sending is not scheduled">
+An enrollment only records state. The API has no background scheduler that sends sequence steps yet. See [Tech debt](/docs/engineering/tech-debt).
+</Callout>

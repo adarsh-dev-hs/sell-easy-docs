@@ -1,0 +1,287 @@
+---
+title: Organization and team
+description: Endpoints for the workspace profile and plan, your own profile and notification preferences, team members and invites, API keys, and the development workspace reset.
+icon: Users
+---
+
+These endpoints live in `backend/src/modules/organization/routes.ts`, which has no base path, and `backend/src/modules/admin/routes.ts`. The business rules are in `organization/service.ts`.
+
+## Access summary
+
+| Endpoint | viewer | member | admin | owner |
+|---|:-:|:-:|:-:|:-:|
+| `GET /org`, `GET /users`, `GET /me/preferences` | ✓ | ✓ | ✓ | ✓ |
+| `PATCH /me`, `PUT /me/preferences` | ✓ | ✓ | ✓ | ✓ |
+| `PATCH /org` | | | ✓ | ✓ |
+| `POST /users/invite`, `POST /users/:id/resend-invite`, `PATCH /users/:id`, `DELETE /users/:id` | | | ✓ | ✓ |
+| `GET /api-keys`, `POST /api-keys`, `POST /api-keys/:id/revoke` | | | ✓ | ✓ |
+| `POST /org/plan` | | | | ✓ |
+| `POST /admin/reset` | | | | ✓ |
+
+## Organization
+
+### The organization object
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | `org_…`. The org's `orgId` is the same value. |
+| `name` | string | |
+| `domain` | string | Stored in lowercase |
+| `plan` | `starter` \| `growth` \| `enterprise` | |
+| `seats` | number | Set by the plan: starter 3, growth 10, enterprise 50 |
+| `timezone` | string | Default `America/New_York` |
+| `settings.autopilot` | boolean | Change it with [`PATCH /agent/settings`](/docs/engineering/api/scoring-and-agent#patch-agentsettings) |
+| `settings.waterfallOrder` | string[] | Integration keys. Change it with [`PUT /integrations/waterfall`](/docs/engineering/api/integrations#put-integrationswaterfall) |
+
+### `GET /org`
+
+Returns the current organization, plus `seatsUsed`.
+
+```json title="200 response"
+{
+  "data": {
+    "id": "org_n5VxwIp6",
+    "name": "Acme Growth Inc.",
+    "domain": "acmegrowth.com",
+    "plan": "growth",
+    "seats": 10,
+    "timezone": "America/New_York",
+    "settings": { "autopilot": true, "waterfallOrder": ["clearbit", "apollo", "fullenrich", "prospeo", "limadata"] },
+    "createdAt": "2026-09-17T12:47:43.082Z",
+    "updatedAt": "2026-09-17T13:12:46.869Z",
+    "orgId": "org_n5VxwIp6",
+    "seatsUsed": 6
+  }
+}
+```
+
+`seatsUsed` counts **every** user in the org, including invited users who haven't accepted yet.
+
+### `PATCH /org`
+
+Updates the organization's details. **Role:** admin or higher.
+
+| Body | Type | Notes |
+|---|---|---|
+| `name` | string, 1–120 | |
+| `domain` | string | Must match `^[a-z0-9.-]+\.[a-z]{2,}$` (case-insensitive), otherwise "Enter a valid domain" |
+| `timezone` | string | Any non-empty string. It isn't checked against a list of IANA zones. |
+
+Returns the organization, without `seatsUsed`.
+
+### `POST /org/plan`
+
+Changes the subscription plan. **Role:** owner. **Status:** `200`.
+
+| Body | Type |
+|---|---|
+| `plan` | `starter` \| `growth` \| `enterprise` |
+
+This updates `plan` and `seats`. **Errors:** `400 "The starter plan has 3 seats but 6 are in use"` when a downgrade would leave fewer seats than users.
+
+<Callout type="info" title="No billing">
+Changing the plan only changes the seat limit. There is no payment provider integration.
+</Callout>
+
+## Your profile
+
+### `PATCH /me`
+
+Updates the signed-in user's profile. **Role:** any.
+
+| Body | Type | Notes |
+|---|---|---|
+| `name` | string, 1–120 | |
+| `title` | string, at most 120 | |
+| `email` | email | Stored in lowercase. `409 "Email is already in use"` if another user in any workspace has it. |
+
+Returns the public user object. Existing JWTs stay valid after an email change, because tokens identify the user by ID.
+
+### `GET /me/preferences`
+
+Returns the user's notification preferences, or the defaults if none have been saved.
+
+```json title="200 response (defaults)"
+{
+  "data": {
+    "notifications": { "highIntentSignal": true, "draftsAwaitingApproval": true, "positiveReplies": true, "dealStageChanges": false, "integrationErrors": true },
+    "channels": { "inApp": true, "email": true, "slack": false }
+  }
+}
+```
+
+### `PUT /me/preferences`
+
+Replaces the preferences. **Role:** any.
+
+| Body | Type |
+|---|---|
+| `notifications` | `Record<string, boolean>` |
+| `channels` | `Record<string, boolean>` |
+
+**Errors:** `400 "Enable at least one notification channel"` if every channel is `false`.
+
+The keys aren't restricted, so the UI decides which keys exist. The preferences are stored in `user_preferences.json`. Notification delivery doesn't read them yet.
+
+## Team
+
+### The user object (public)
+
+| Field | Type | Notes |
+|---|---|---|
+| `id`, `name`, `email` | string | |
+| `role` | `owner` \| `admin` \| `member` \| `viewer` | |
+| `avatarColor` | string | A Tailwind background class, such as `bg-indigo-500` |
+| `title?` | string | |
+| `status` | `active` \| `invited` | |
+| `lastActiveAt?` | string | Updated on login and when an invite is accepted |
+
+`passwordHash` and `inviteToken` are never returned.
+
+### `GET /users`
+
+Lists the org's team members, oldest first. Plain array, **not paginated**.
+
+### `POST /users/invite`
+
+Invites a team member. **Role:** admin or higher. **Status:** `201`.
+
+| Body | Type | Notes |
+|---|---|---|
+| `email` | email | Stored in lowercase |
+| `role` | `admin` \| `member` \| `viewer` | You can't invite another owner. |
+| `title` | string, at most 120 | Optional |
+
+**Behaviour:** creates the user with `status: "invited"`, a display name derived from the email (`jane.doe@…` becomes "Jane Doe") and an invite token (`inv_` followed by 24 characters).
+
+**Errors:**
+
+- `409 "This email is already a member of a workspace"`. Emails are unique across all workspaces.
+- `400 "All seats are in use — upgrade your plan to invite more members"`.
+
+```json title="201 response (shape)"
+{ "data": { "user": { "id": "usr_…", "email": "jane.doe@acmegrowth.com", "role": "member", "status": "invited", "...": "..." }, "inviteToken": "inv_Qm3…" } }
+```
+
+<Callout type="warn" title="The invite token is returned instead of emailed">
+The API doesn't send invite emails yet. It returns `inviteToken` so the admin can share the link `<web-origin>/login?invite=<inviteToken>`, which the Team tab builds and copies. Treat the token like a password: whoever has it can set the account's password with [`POST /auth/accept-invite`](/docs/engineering/api/authentication#post-authaccept-invite).
+</Callout>
+
+### `POST /users/:id/resend-invite`
+
+Issues a **new** invite token. The old token stops working. **Role:** admin or higher. **Status:** `200`.
+
+Returns `{ user, inviteToken }`.
+
+**Errors:** `404 "User not found"`; `400 "User has already joined"`.
+
+### `PATCH /users/:id`
+
+Changes a member's `role` (`admin`, `member` or `viewer`), `title` (at most 120 characters) or `name` (1–120 characters). **Role:** admin or higher.
+
+**Errors:**
+
+- `400` if `role` is `owner`. The schema rejects it, because ownership transfer isn't supported.
+- `403 "The owner's role cannot be changed"`.
+- `403 "You cannot change your own role"`.
+- `404`.
+
+### `DELETE /users/:id`
+
+Removes a member. **Role:** admin or higher. **Status:** `204`.
+
+**What happens to their records:**
+
+| Record | Result |
+|---|---|
+| Accounts and contacts they owned | `ownerId` set to `null` (unassigned) |
+| Deals and sequences they owned | Reassigned to the admin who removed them |
+| Their notification preferences | Deleted |
+
+**Errors:** `403 "The owner cannot be removed"`; `403 "You cannot remove yourself"`; `404`.
+
+The removed user's existing JWT stops working immediately, because every request loads the user again.
+
+## API keys
+
+API keys authenticate machine-to-machine calls. Today the only such route is [`POST /webhooks/signals`](/docs/engineering/api/signals-and-webhooks#post-webhookssignals).
+
+### The API key object
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | `key_…` |
+| `name` | string | |
+| `prefix` | string | The first 12 characters of the secret, such as `se_live_NLdZ`, so people can recognise the key |
+| `scopes` | string[] | Any of `accounts:read`, `accounts:write`, `signals:write`, `outreach:read`, `outreach:write`, `pipeline:read`, `pipeline:write` |
+| `createdBy` | string | The user ID of the creator. Requests made with the key act as this user. |
+| `createdAt`, `lastUsedAt?` | string | |
+| `revoked` | boolean | |
+
+The secret itself is never stored. The database keeps only its SHA-256 hash.
+
+### `GET /api-keys`
+
+Lists keys, newest first, including revoked ones. **Role:** admin or higher.
+
+```json title="200 response"
+{ "data": [{ "id": "key_iqx9hxoC", "name": "webhook", "prefix": "se_live_NLdZ", "scopes": ["signals:write"], "createdAt": "2026-09-17T12:48:18.759Z", "lastUsedAt": "2026-09-17T12:48:18.800Z", "createdBy": "usr_6MxxQTxx", "revoked": false }] }
+```
+
+### `POST /api-keys`
+
+Creates a key. **Role:** admin or higher. **Status:** `201`.
+
+| Body | Type |
+|---|---|
+| `name` | string, 1–80 |
+| `scopes` | array of the scope values above, at least one |
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/api-keys \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"name":"RB2B webhook","scopes":["signals:write"]}'
+```
+
+```json title="201 response (shape)"
+{ "data": { "apiKey": { "id": "key_…", "name": "RB2B webhook", "prefix": "se_live_AbCd", "scopes": ["signals:write"], "revoked": false, "...": "..." }, "secret": "se_live_AbCd…(40 characters in total)" } }
+```
+
+<Callout type="error" title="The secret is shown once">
+`secret` is `se_live_` followed by 32 random alphanumeric characters. The API can't show it again. If the secret is lost, revoke the key and create a new one.
+</Callout>
+
+### `POST /api-keys/:id/revoke`
+
+Revokes a key. It stops working immediately. **Role:** admin or higher. **Status:** `200`. Returns the key with `revoked: true`.
+
+The key stays in the list. Revoking a key that's already revoked is allowed. **Errors:** `404 "API key not found"`.
+
+## Admin
+
+### `POST /admin/reset`
+
+Wipes the current organization's **business data**, and can reload the demo dataset. **Role:** owner. **Status:** `200`.
+
+| Body | Type | Default |
+|---|---|---|
+| `demo` | boolean | `false` |
+
+**Behaviour:**
+
+- **Deleted:** accounts, contacts, signals, playbooks, agent runs, drafts, sequences, enrollments, mailboxes, inbox, deals, activities and notifications.
+- **Restored:** the ICP goes back to its defaults, the integration catalog is recreated with every integration **disconnected**, and autopilot is switched on.
+- **Kept:** the organization, its users and its API keys.
+- With `demo: true`, the demo dataset is loaded afterwards. This also applies the demo's ICP and integration connection state. Demo teammates are created as real users with the password `Password123!`. Teammates whose email already exists are reused.
+
+```json title="200 response"
+{ "data": { "reset": true, "demo": true, "counts": { "accounts": 66, "contacts": 222, "signals": 260, "sequences": 5, "playbooks": 5, "deals": 34, "...": "..." } } }
+```
+
+`counts` is `null` when `demo` is `false`.
+
+**Errors:** `403 "Admin reset is disabled"` when `NODE_ENV=production` or `ENABLE_ADMIN_RESET` isn't enabled. `GET /meta` reports this as `features.adminReset`, and the UI shows **Reset workspace** in the user menu only when that flag is on and the user is the owner.
+
+<Callout type="error" title="Destructive">
+This action can't be undone. Unlike `npm run db:reset`, it runs inside the API process, so the in-memory cache stays consistent and you don't need to restart.
+</Callout>

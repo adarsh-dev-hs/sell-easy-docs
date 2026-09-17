@@ -1,0 +1,284 @@
+---
+title: UI conventions
+description: The shadcn/ui primitives, shared building blocks, app layout, theming, toasts, forms, tables, lint rules and accessibility practices the SellEasy web app follows.
+icon: Palette
+---
+
+The web app uses one design system, shadcn/ui on Tailwind v4. It also has a small set of shared components that give every page the same look. Follow these conventions so new screens fit in without extra styling work.
+
+## shadcn/ui primitives
+
+`components.json` sets up shadcn with these values:
+
+| Setting | Value |
+|---|---|
+| `style` | `radix-nova` |
+| `baseColor` | `neutral` |
+| `cssVariables` | `true` |
+| `iconLibrary` | `lucide` |
+| `rsc` | `true` |
+| Aliases | `@/components`, `@/components/ui`, `@/lib`, `@/lib/utils`, `@/hooks` |
+
+The generated primitives live in `src/components/ui/`:
+
+> alert, alert-dialog, avatar, badge, breadcrumb, button, card, chart, checkbox, collapsible, command, dialog, dropdown-menu, empty, field, hover-card, input, input-group, label, popover, progress, radio-group, scroll-area, select, separator, sheet, sidebar, skeleton, slider, sonner, switch, table, tabs, textarea, toggle, toggle-group, tooltip
+
+Add a new primitive with the CLI rather than copying code by hand:
+
+```bash
+cd frontend
+npx shadcn@latest add accordion
+```
+
+- **Treat `ui/` files as vendored code.** Keep your edits small, and put feature-specific styling in the component that uses the primitive.
+- **Button variants:** `default`, `outline`, `secondary`, `ghost`, `destructive` and `link`.
+- **Button sizes:** `xs`, `sm`, `default`, `lg`, `icon`, `icon-xs`, `icon-sm` and `icon-lg`.
+- **Icons:** inside a `Button`, a lucide icon is sized automatically. `<Button><PlusIcon /> Add</Button>` needs no extra classes.
+
+### The `cn` helper
+
+```ts title="src/lib/utils.ts"
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+```
+
+Use `cn()` whenever you combine class names. It merges conditional classes with `clsx`, and resolves Tailwind conflicts with `tailwind-merge`, so a `className` passed by the caller overrides the defaults:
+
+```tsx
+<div className={cn("flex size-8 items-center rounded-md", active && "bg-primary/15", className)} />
+```
+
+## Shared components (`components/shared/`)
+
+| Component | File | Use it for |
+|---|---|---|
+| `PageHeader` | `page-header.tsx` | The title, description and `actions` at the top of every page. It stacks on small screens. |
+| `StatCard` | `stat-card.tsx` | KPI tiles. Props: `label`, `value`, `icon?`, `delta?` (a green or red percentage with a trend arrow) and `hint?`. |
+| `TierBadge` | `score.tsx` | The "Tier A" to "Tier D" badge, coloured by `TIER_STYLES` |
+| `ScoreBar`, `ScoreCell` | `score.tsx` | A 0–100 bar coloured by `scoreColor()`: at least 70 is emerald, at least 50 sky, at least 35 amber. `ScoreCell` adds a tooltip with the fit and intent scores. |
+| `StatusBadge` | `status.tsx` | Any status string. `humanize()` turns it into a label, and the colour comes from a built-in map (`active` → success, `awaiting_approval` → warning, …). Override with `tone` or `label`. |
+| `SignalIcon`, `SIGNAL_ICONS` | `status.tsx` | A coloured icon tile for each of the eight signal types |
+| `CompanyAvatar`, `PersonAvatar` | `avatars.tsx` | An initials avatar. The colour is picked deterministically from a hash of the name. |
+| `UserAvatar`, `OwnerLabel`, `AgentAvatar` | `avatars.tsx` | A team member's avatar in their `avatarColor`; an "Unassigned" fallback; the bot avatar |
+| `ConfirmDialog` | `confirm-dialog.tsx` | An alert dialog for destructive actions. It can be controlled (`open` and `onOpenChange`) or use a `trigger`. It's `destructive` by default. |
+| `EmptyState` | `empty-state.tsx` | A dashed empty panel with an icon, title, description and optional `action` |
+| `QueryError` | `query-state.tsx` | A destructive `Alert` showing `errorMessage(error)` and an optional **Retry** button |
+| `TableSkeleton` | `query-state.tsx` | Placeholder table rows while the first page loads |
+
+Every data view handles its states the same way:
+
+```tsx
+const { data, isLoading, error, refetch } = useAccounts(filters)
+
+if (error) return <QueryError error={error} onRetry={refetch} />
+if (isLoading) return <TableSkeleton rows={8} />
+if (!data?.data.length)
+  return <EmptyState icon={Building2Icon} title="No accounts yet" description="Import a CSV or add one manually." action={importButton} />
+return <AccountsTable rows={data.data} />
+```
+
+Some feature folders hold helpers shared across pages:
+
+- `accounts/table-kit.tsx`: `SortButton`, `nextSort`, `TablePagination` and `BulkBar`
+- `accounts/account-dialogs.tsx`: `AddAccountDialog`, `EditAccountDialog`, `CreateDealDialog`, `OwnerSelect` and `sellersOf`
+- `settings/shared.tsx`: `CopyButton`, `copyText` and `EMAIL_RE`
+- `agent/run-toast.ts`: `useRunToast`, which describes an agent run in a toast with a "View run" action
+
+## App layout
+
+```text
+┌──────────────┬─────────────────────────────────────────────────────────────┐
+│ AppSidebar   │ AppHeader: ☰ │ Breadcrumb │ ⌘K search │ Autopilot │ Simulate │ 🔔 │
+│  SellEasy    ├─────────────────────────────────────────────────────────────┤
+│  Overview    │ <main class="mx-auto max-w-[1600px] space-y-6 p-4 md:p-6">  │
+│  Data        │   PageHeader                                                │
+│  Intelligence│   …page content…                                            │
+│  Engage      │                                                             │
+│  Workspace   │                                                             │
+│  user menu   │                                                             │
+└──────────────┴─────────────────────────────────────────────────────────────┘
+```
+
+- **Sidebar** (`layout/app-sidebar.tsx`)
+  - The shadcn `Sidebar` with `collapsible="icon"`.
+  - Menu groups come from `NAV_GROUPS` in `layout/nav.ts`: Overview, Data, Intelligence, Engage and Workspace.
+  - Nav badges show live counts: drafts awaiting approval (`/agent`), unread replies (`/outreach`) and unprocessed signals (`/signals`).
+  - The user menu at the bottom has the theme toggle, **Reset workspace** (owner only, when enabled) and **Log out**.
+- **Header** (`layout/app-header.tsx`)
+  - It's sticky and slightly translucent.
+  - The breadcrumb is built from the path. On detail routes it shows the account or sequence name, fetched with `useAccount` and `useSequence`.
+  - It also holds the **autopilot** switch, the **Simulate signal** button (shown only when `features.simulation` is on and the user can write), the command menu and notifications.
+- **Command menu** (`layout/command-menu.tsx`)
+  - Opens with ⌘K or Ctrl+K.
+  - Has quick actions (`/accounts?new=1`, `/pipeline?new=1`) and page links.
+  - Shows live results from `GET /search`: accounts go to `/accounts/:id`, contacts to `/contacts?id=`, deals to `/pipeline?deal=` and sequences to `/outreach/:id`.
+- **Notifications** (`layout/notifications.tsx`)
+  - A popover with an unread count. It polls every 30 s.
+  - Clicking an item marks it as read and navigates to its `href`. There's also **Mark all read**.
+
+To add a page to the navigation, add an entry to `NAV_GROUPS`. See [Adding a page](/docs/engineering/frontend/adding-a-page#add-the-nav-item).
+
+## Theming and dark mode
+
+`src/app/globals.css` is written for Tailwind v4:
+
+- **Imports:** `tailwindcss`, `tw-animate-css` and `shadcn/tailwind.css`.
+- **Dark variant:** `@custom-variant dark (&:is(.dark *))`.
+- **Token mapping:** `@theme inline` maps the CSS variables to Tailwind colours (`--color-primary: var(--primary)`, and so on), plus the radius scale (`--radius-sm` to `--radius-4xl`, all derived from `--radius`).
+- **`:root`** defines the light palette in **OKLCH**. The primary colour is indigo/violet (`oklch(0.511 0.262 276.966)`), and the neutrals are neutral greys. There are also chart colours `--chart-1` to `--chart-5` and sidebar tokens.
+- **`.dark`** overrides the same tokens for dark mode.
+
+**Use tokens, not raw colours,** for surfaces and text: `bg-background`, `bg-card`, `bg-muted`, `text-muted-foreground`, `border-border`, `bg-primary text-primary-foreground` and `text-destructive`.
+
+Semantic accents are the exception. Status tones, tiers and signal colours use Tailwind palette colours at 15% opacity, with an explicit `dark:` text colour:
+
+```tsx
+"bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+```
+
+**Dark mode** is handled by `next-themes` (`attribute="class"`, `defaultTheme="system"`, `disableTransitionOnChange`). The `<html>` element has `suppressHydrationWarning` because the class is set on the client.
+
+Users switch themes in **Settings → Appearance** (`appearance-tab.tsx`, which uses `useTheme().setTheme`) or from the sidebar menu. The sonner `Toaster` follows the same theme.
+
+**Charts** use shadcn's `chart.tsx` (`ChartContainer`, `ChartTooltip`) around recharts, with the colours `var(--chart-n)`.
+
+## Toasts
+
+The app uses `sonner`. The `<Toaster richColors position="bottom-right" />` is mounted once in `Providers`.
+
+| Situation | How |
+|---|---|
+| A mutation succeeded | Pass `successMessage` to `useApiMutation`, either as a string or as `(data, vars) => string` |
+| A mutation failed | Automatic, via `toast.error(errorMessage(err))`. Pass `toastError: false` if you show the error inline. |
+| A long action | `const id = toast.loading("Enriching…")`, then `toast.success(msg, { id })` or `toast.error(msg, { id })`. The accounts page does this for enrichment. |
+| An agent run result | `useRunToast()(run, context)` shows the run status and score change, with a "View run" action that opens `/agent?run=<id>` |
+| Something with a follow-up | `toast.success(title, { description, action: { label, onClick } })` |
+
+Keep toast text short. Put the entity name first, for example "Acme Corp enriched", "3 deals pushed to HubSpot" or "Plan changed to growth".
+
+## Forms
+
+Forms use the shadcn **Field** components from `ui/field.tsx`: `FieldGroup`, `Field`, `FieldLabel`, `FieldDescription`, `FieldError`, `FieldContent`, `FieldSet` and `FieldLegend`. Validation happens in two layers:
+
+1. **Client-side checks, shown after the first submit.** A `submitted` flag keeps the form from showing errors while the user is still typing.
+2. **Server field errors.** These come from `ApiError.fieldErrors` and are kept in a small `serverErrors` state. Clear an entry when the user edits that field.
+
+```tsx title="Pattern (simplified from settings/api-keys-tab.tsx)"
+const create = useCreateApiKey()
+const [name, setName] = useState("")
+const [submitted, setSubmitted] = useState(false)
+const [serverErrors, setServerErrors] = useState<{ name?: string }>({})
+
+const errors = {
+  name: name.trim().length < 3 ? "Give the key a descriptive name (3+ characters)." : (serverErrors.name ?? null),
+}
+
+const submit = (e: React.FormEvent) => {
+  e.preventDefault()
+  setSubmitted(true)
+  if (errors.name) return
+  create.mutate(
+    { name: name.trim(), scopes },
+    {
+      onError: (err) => {
+        if (err instanceof ApiError) setServerErrors({ name: err.fieldErrors.name?.[0] })
+      },
+    },
+  )
+}
+
+return (
+  <form onSubmit={submit}>
+    <FieldGroup>
+      <Field data-invalid={submitted && !!errors.name}>
+        <FieldLabel htmlFor="key-name">Name</FieldLabel>
+        <Input
+          id="key-name"
+          value={name}
+          aria-invalid={submitted && !!errors.name}
+          onChange={(e) => {
+            setName(e.target.value)
+            setServerErrors({})
+          }}
+        />
+        {submitted && errors.name && <FieldError>{errors.name}</FieldError>}
+      </Field>
+    </FieldGroup>
+    <Button type="submit" disabled={create.isPending}>
+      {create.isPending && <Loader2Icon className="animate-spin" />} Create key
+    </Button>
+  </form>
+)
+```
+
+Form conventions:
+
+- **Reset a form when its source record changes by changing its `key`,** not with an effect. For example: `` <OrgForm key={`${org.name}|${org.domain}|${org.timezone}`} org={org} /> ``.
+- **Disable the submit button while the mutation is pending,** and show `Loader2Icon` with `animate-spin`.
+- **Put dialogs and sheets in their own components.** Examples are `AddAccountDialog`, `DealSheet` and `ContactSheet`. Detail sheets fetch their own data from an ID.
+- **Keep the client rules in line with the server's zod schema.** The server is the authority; the client checks are there for a better experience.
+
+## Tables and lists
+
+Lists are **filtered, sorted and paginated on the server**:
+
+```tsx title="Pattern (from app/(app)/accounts/page.tsx)"
+const [search, setSearch] = useState("")
+const [tier, setTier] = useState("all")
+const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "score", dir: "desc" })
+const [page, setPage] = useState(0)                 // 0-based in the UI
+
+const q = useDebounced(search.trim())               // 250 ms
+const listQuery = useAccounts({
+  q: q || undefined,
+  tier: tier !== "all" ? [tier as Tier] : undefined, // arrays → "A,B" by the client
+  sort: `${SORT_FIELDS[sort.key]}:${sort.dir}`,
+  page: page + 1,                                   // 1-based in the API
+  pageSize: 25,
+})
+
+const rows = listQuery.data?.data ?? []
+const total = listQuery.data?.meta.total ?? 0
+```
+
+- **Reset to the first page** whenever a filter changes. The accounts page wraps its setters in `resetPage(setter)`.
+- **Debounce free-text search** with `useDebounced(value, 250)`. Selects and toggles don't need it.
+- **Sortable headers** use `SortButton`. `nextSort(prev, key)` flips the direction or switches to the new key.
+- **Pagination** uses `<TablePagination page pageSize total onPageChange />`, which shows "Showing 26–50 of 64" and Prev/Next buttons.
+- **Selection:** keep `selected: string[]`, and show `<BulkBar count onClear>` with the bulk actions. Clear the selection after a bulk mutation succeeds.
+- **Keep previous rows while refetching.** `useApiQuery` does this with `keepPreviousData`. Dim the table (`opacity-60`) while `isPlaceholderData` is true, and show a small spinner while `isFetching`, instead of showing the skeleton again.
+- **The pipeline board is the exception.** It loads up to 1000 deals with `pageSize: 1000` and groups them by stage on the client.
+
+<Callout type="info" title="useDebounced is duplicated">
+Identical `useDebounced` hooks exist in `components/accounts`, `integrations`, `outreach` and `signals`, and in `pipeline/hooks.ts`. Import the one from `components/accounts/use-debounced.ts` until they're merged into `src/hooks/`.
+</Callout>
+
+## Lint rules to respect
+
+`npm run lint` uses `eslint-config-next` 16 (`core-web-vitals` + `typescript`). That config turns on the **React Compiler** rules in `eslint-plugin-react-hooks`. These are **errors**, not warnings:
+
+| Rule | What it catches | How to comply |
+|---|---|---|
+| `react-hooks/purity` | Impure calls during render, such as `Date.now()`, `Math.random()` or `new Date()` used for display logic | Compute the value once in a state initializer, as `useState(currentTime)` does on the pipeline page with `currentTime = () => Date.now()`. Or compute it in an event handler or effect. |
+| `react-hooks/set-state-in-effect` | Calling `setState` synchronously inside `useEffect` to "sync" state | Derive the value during render (see the [URL param pattern](/docs/engineering/frontend/auth-and-routing#url-parameter-conventions)), reset state with a `key`, or update state in the event handler that causes the change |
+| `react-hooks/set-state-in-render` | Calling `setState` directly while rendering | Move it to an event handler |
+| `react-hooks/refs` | Reading or writing `ref.current` during render | Only touch refs in effects or handlers. The deal board keeps its last drag time in a ref and reads it in click handlers. |
+| `react-hooks/immutability` | Mutating props, state or hook return values | Copy the value first: `[...list].sort()` |
+| `react-hooks/static-components` | Components defined inside other components | Define them at module level |
+| `react-hooks/use-memo`, `preserve-manual-memoization` | Incorrect `useMemo` and `useCallback` usage | Include all dependencies, and memoize only values that are expensive to compute |
+| `react-hooks/rules-of-hooks` | Conditional hooks | Call hooks unconditionally. Use `enabled` to skip a query. |
+| `react-hooks/exhaustive-deps` (warning) | Missing effect dependencies | Fix the dependencies. Don't silence the rule. |
+
+The codebase has no `eslint-disable` comments. Keep it that way.
+
+## Accessibility
+
+- **Use the Radix-based primitives.** Dialog, Sheet, AlertDialog, DropdownMenu, Popover, Select, Tabs and Tooltip handle focus trapping, `Esc` to close, ARIA roles and keyboard navigation.
+- **Label every input.** Use `<FieldLabel htmlFor>` with a matching `id`, and set `aria-invalid` when the field has an error. The `Field` component styles invalid states.
+- **Give icon-only buttons a name,** with `aria-label` or `<span className="sr-only">…</span>`. The table action menus in `team-tab.tsx` and `api-keys-tab.tsx` do this. Add a `Tooltip` for sighted users.
+- **Sheets and dialogs need a title and description.** If they're only for screen readers, hide them visually with `className="sr-only"`, as `DealSheet` does.
+- **Don't rely on colour alone.** Status and tier badges always include text ("Tier A", "Awaiting approval"), and score bars show the number.
+- **Keyboard shortcuts:** ⌘K / Ctrl+K opens search, and the shadcn sidebar toggles with ⌘B / Ctrl+B.
+- **Drag and drop has a click alternative.** The pipeline kanban uses dnd-kit, but you can also change a deal's stage from the deal sheet, which opens from both the board and the table view.
+- **Use real buttons.** `globals.css` gives enabled `button` and `[role=button]` elements `cursor: pointer`. Use `<Button>` or `<button>`, not clickable `div`s.

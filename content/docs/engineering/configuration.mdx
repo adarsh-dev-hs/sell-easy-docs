@@ -1,0 +1,233 @@
+---
+title: Configuration
+description: Every environment variable for the API and web app, its default, whether it is validated and used today, and recommended values per environment.
+icon: SlidersHorizontal
+---
+
+The API reads its configuration from environment variables, loaded from `backend/.env` by `dotenv` (`import "dotenv/config"` in `src/config.ts`). `backend/.env.example` lists every key the target architecture needs. **Only a subset is validated and used today**; the rest are reserved for drivers and adapters that aren't built yet. The web app needs a single variable.
+
+## How configuration is loaded
+
+```ts title="backend/src/config.ts (excerpt)"
+const parsed = schema.safeParse(process.env)
+if (!parsed.success) {
+  console.error("❌ Invalid environment configuration:")
+  for (const issue of parsed.error.issues) console.error(`  - ${issue.path.join(".")}: ${issue.message}`)
+  console.error("Copy .env.example to .env and fill in the values.")
+  process.exit(1)
+}
+
+export const config = {
+  ...env,
+  isProd, // NODE_ENV === "production"
+  isTest: env.NODE_ENV === "test",
+  corsOrigins: env.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean),
+  dataDir: path.resolve(process.cwd(), env.DATA_DIR),
+  enableSimulation: env.ENABLE_SIMULATION,
+  enableAdminReset: env.ENABLE_ADMIN_RESET && !isProd,
+}
+```
+
+- Validation happens **once, at import**. Any invalid value stops the process with a readable list of errors.
+- Variables that aren't in the schema are ignored by `config`. Nothing reads `process.env` elsewhere, except test setup.
+- Booleans (`ENABLE_*`) accept `true`, `false`, `1` or `0`, and **default to `false`** when unset. Note that `.env.example` sets both to `true`.
+- `DATA_DIR` is resolved relative to the **current working directory**. `npm` scripts run in `backend/`, so `./db` means `backend/db`.
+- Real environment variables take precedence over `.env`, because `dotenv` doesn't override variables that are already set.
+
+**Legend.** *Validated* means the key is in the zod schema in `config.ts`. **Active** means code reads it today. **Reserved** means it is documented for a future driver or adapter and nothing reads it.
+
+## Core
+
+Only this block needs values to run the app today.
+
+| Variable | Example / default | Required | Validated | Status | Used by |
+|---|---|---|---|---|---|
+| `NODE_ENV` | `development` | no | `development \| test \| production` | **Active** | Prod mode: disables admin reset, 20 attempts per 15 min on auth endpoints, JSON logs, Slack notifications. `test` silences logs and removes mock delays. |
+| `PORT` | `4000` | no | positive int | **Active** | `server.ts` `listen` |
+| `API_PREFIX` | `/api/v1` | no | string | **Active** | Router mount point, OpenAPI paths |
+| `CORS_ORIGINS` | `http://localhost:3000,http://localhost:3001` (schema default `http://localhost:3000`) | no | string, comma-separated | **Active** | `cors` allow-list (`*` allows all) |
+| `LOG_LEVEL` | `info` | no | `fatal … trace \| silent` | **Active** | pino level (forced to `silent` in tests) |
+| `JWT_SECRET` | placeholder | **yes** | string, at least 16 characters | **Active** | Signing and verifying JWTs |
+| `JWT_EXPIRES_IN` | `7d` | no | string (`jsonwebtoken` format: `7d`, `12h`, seconds) | **Active** | Token `exp` |
+| `ENCRYPTION_KEY` | 64 zeros | **yes** | exactly 64 hex characters | **Active** | AES-256-GCM encryption of integration API keys |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | no | number | **Active** | Global rate limit window |
+| `RATE_LIMIT_MAX` | `600` | no | number | **Active** | Requests per window per IP (tests use `100000`) |
+| `ENABLE_SIMULATION` | `true` (schema default `false`) | no | bool | **Active** | `POST /signals/simulate`, `GET /meta` `features.simulation` |
+| `ENABLE_ADMIN_RESET` | `true` (schema default `false`) | no | bool | **Active** | `POST /admin/reset` (always off in production) |
+| `IMPORT_MAX_BYTES` | `5242880` (5 MB) | no | number | **Active** | Import `content` limit. The JSON body limit is `max(2 ×, 1 MB)`. |
+
+## Bootstrap
+
+Read by `npm run bootstrap`, `seed:demo` and `db:reset`. See [Seeding and scripts](/docs/engineering/backend/seeding-and-scripts).
+
+| Variable | Default | Validated | Status |
+|---|---|---|---|
+| `BOOTSTRAP_ORG_NAME` | `My Company` | string | **Active** (scripts) |
+| `BOOTSTRAP_ORG_DOMAIN` | `example.com` | string | **Active**. Also the domain used for demo teammate emails. |
+| `BOOTSTRAP_ADMIN_NAME` | `Admin User` | string | **Active** |
+| `BOOTSTRAP_ADMIN_EMAIL` | `admin@example.com` | email | **Active**. The idempotency key for bootstrap. |
+| `BOOTSTRAP_ADMIN_PASSWORD` | `ChangeMe123!` | at least 8 characters | **Active** |
+
+## Database
+
+| Variable | Default | Validated | Status | Notes |
+|---|---|---|---|---|
+| `DB_DRIVER` | `json` | `json \| postgres` | **Active** | `postgres` **fails at startup**, because the driver is a stub |
+| `DATA_DIR` | `./db` | string | **Active** | JSON driver folder, resolved from the cwd |
+| `DATABASE_URL` | `postgresql://selleasy:password@localhost:5432/selleasy` | optional string | Reserved | Postgres driver |
+| `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`, `PGSSLMODE` | `localhost`, `5432`, `selleasy`, `password`, `selleasy`, `disable` | — | Reserved | Alternative to `DATABASE_URL` (`pg` reads these natively) |
+| `DB_POOL_MIN`, `DB_POOL_MAX` | `2`, `10` | — | Reserved | Pool sizing |
+| `PIPELINE_DATABASE_URL` | empty (falls back to `DATABASE_URL`) | — | Reserved | Separate CRM/pipeline database |
+| `ANALYTICS_WAREHOUSE_URL` | dummy Redshift URL | — | Reserved | Phase 4+ warehouse |
+| `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE` | dummy | — | Reserved | Alternative warehouse |
+
+## Cache
+
+| Variable | Default | Validated | Status |
+|---|---|---|---|
+| `CACHE_DRIVER` | `memory` | `memory \| redis` | Validated, **not read** |
+| `REDIS_URL` | `redis://localhost:6379` | optional string | Reserved |
+| `REDIS_PASSWORD`, `REDIS_TLS`, `REDIS_KEY_PREFIX`, `CACHE_TTL_SECONDS` | dummy, `false`, `selleasy:`, `300` | — | Reserved |
+
+## Search
+
+| Variable | Default | Validated | Status |
+|---|---|---|---|
+| `SEARCH_DRIVER` | `memory` | `memory \| opensearch` | Validated, **not read** (search is always the in-memory scan) |
+| `OPENSEARCH_NODE`, `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD`, `OPENSEARCH_INDEX_PREFIX` | `https://localhost:9200`, `admin`, dummy, `selleasy` | — | Reserved |
+
+## Graph DB (optional)
+
+| Variable | Default | Status |
+|---|---|---|
+| `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | `neo4j://localhost:7687`, `neo4j`, dummy | Reserved, for use if relationship queries get heavy |
+
+## AWS
+
+| Variable | Default | Validated | Status | Intended use |
+|---|---|---|---|---|
+| `AWS_REGION` | `us-east-1` | — | Reserved | All AWS SDK clients |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | placeholders | — | Reserved | Prefer IAM task roles in ECS |
+| `EVENT_BUS_DRIVER` | `memory` | `memory \| eventbridge \| sqs` | **Active** (only warns when not `memory`) | `events/bus.ts` |
+| `EVENTBRIDGE_BUS_NAME`, `EVENTBRIDGE_SOURCE` | `selleasy-events`, `selleasy.api` | — | Reserved | Event publishing |
+| `SQS_SIGNALS_QUEUE_URL`, `SQS_OUTREACH_QUEUE_URL` | dummy | — | Reserved | Agent and outreach workers |
+| `SNS_TOPIC_ARN` | dummy | — | Reserved | Notification fan-out |
+| `STEP_FUNCTIONS_ENRICHMENT_ARN` | dummy | — | Reserved | Enrichment workflow |
+| `S3_BUCKET`, `S3_IMPORTS_PREFIX` | `selleasy-uploads`, `imports/` | — | Reserved | Import file uploads |
+| `SES_FROM_EMAIL`, `SES_CONFIGURATION_SET` | `outbound@example.com`, `selleasy-outbound` | — | Reserved | SES email adapter |
+| `SECRETS_MANAGER_PREFIX` | `selleasy/` | — | Reserved | Secrets lookup |
+| `CLOUDWATCH_LOG_GROUP` | `/selleasy/api` | — | Reserved | Log shipping |
+
+## Auth
+
+| Variable | Default | Validated | Status |
+|---|---|---|---|
+| `AUTH_DRIVER` | `local` | `local \| cognito` | Validated, **not read** (always local JWT) |
+| `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `COGNITO_CLIENT_SECRET`, `COGNITO_DOMAIN` | dummy | — | Reserved |
+| `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `AUTH0_AUDIENCE` | dummy | — | Reserved (enterprise SSO) |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | dummy | — | Reserved |
+| `MICROSOFT_OAUTH_CLIENT_ID`, `MICROSOFT_OAUTH_CLIENT_SECRET` | dummy | — | Reserved |
+
+## LLM
+
+| Variable | Default | Validated | Status |
+|---|---|---|---|
+| `LLM_PROVIDER` | `mock` | `mock \| anthropic` | **Active** (warns when not `mock`, still uses the mock) |
+| `ANTHROPIC_API_KEY` | placeholder | optional string | Validated, reserved |
+| `ANTHROPIC_MODEL` | `claude-opus-5` | string | Validated, reserved |
+| `ANTHROPIC_FAST_MODEL` | `claude-haiku-4-5` | — | Reserved |
+| `ANTHROPIC_MAX_TOKENS` | `1024` | — | Reserved |
+| `LANGGRAPH_API_URL` | `http://localhost:8123` | — | Reserved |
+
+## Enrichment, TAM and scraping
+
+| Variable | Default | Validated | Status |
+|---|---|---|---|
+| `ENRICHMENT_PROVIDER` | `mock` | `mock \| live` | **Active** (warns when not `mock`) |
+| `CLEARBIT_API_KEY`, `APOLLO_API_KEY`, `FULLENRICH_API_KEY`, `PROSPEO_API_KEY`, `LIMADATA_API_KEY`, `APIFY_API_TOKEN`, `LINKUP_API_KEY` | dummy | — | Reserved |
+
+## Intent and signal vendors
+
+| Variable | Default | Status |
+|---|---|---|
+| `BOMBORA_API_KEY`, `BOMBORA_CLIENT_ID` | dummy | Reserved |
+| `RB2B_API_KEY`, `RB2B_WEBHOOK_SECRET` | dummy | Reserved (webhook signature verification isn't implemented) |
+| `TRIGIFY_API_KEY`, `TRIGIFY_WEBHOOK_SECRET` | dummy | Reserved |
+
+## Outreach and call intelligence
+
+| Variable | Default | Validated | Status |
+|---|---|---|---|
+| `EMAIL_PROVIDER` | `mock` | `mock \| ses \| instantly \| mailpool` | **Active** (warns when not `mock`) |
+| `MAILPOOL_API_KEY`, `INSTANTLY_API_KEY` | dummy | — | Reserved |
+| `LINKEDIN_PROVIDER` | `mock` | `mock \| heyreach` | Validated, **not read** |
+| `HEYREACH_API_KEY` | dummy | — | Reserved |
+| `FIREFLIES_API_KEY` | dummy | — | Reserved |
+
+## CRM
+
+| Variable | Default | Validated | Status |
+|---|---|---|---|
+| `CRM_PROVIDER` | `mock` | `mock \| hubspot \| attio \| salesforce` | **Active** (warns when not `mock`; sets the mock CRM's name) |
+| `HUBSPOT_ACCESS_TOKEN`, `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET` | placeholders | — | Reserved |
+| `ATTIO_API_KEY` | dummy | — | Reserved |
+| `SALESFORCE_INSTANCE_URL`, `SALESFORCE_CLIENT_ID`, `SALESFORCE_CLIENT_SECRET`, `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, `SALESFORCE_SECURITY_TOKEN` | dummy | — | Reserved |
+
+## Notifications
+
+| Variable | Default | Validated | Status |
+|---|---|---|---|
+| `SLACK_WEBHOOK_URL` | empty | optional string | **Active**: `notificationService.notify` posts `{ text }` when the URL starts with `https://hooks.slack.com/` **and** `NODE_ENV=production` |
+| `SLACK_BOT_TOKEN` | placeholder | — | Reserved |
+
+## Observability
+
+| Variable | Default | Status |
+|---|---|---|
+| `SENTRY_DSN` | empty | Reserved (no Sentry SDK installed) |
+| `DATADOG_API_KEY`, `DD_SERVICE`, `DD_ENV`, `DD_AGENT_HOST` | dummy, `selleasy-api`, `development`, `localhost` | Reserved (no `dd-trace`) |
+
+## Frontend
+
+`frontend/.env.local`, copied from `frontend/.env.example` by `npm run setup`:
+
+| Variable | Default | Used by |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | `http://localhost:4000/api/v1` | `frontend/src/lib/api/client.ts` (`API_URL`, trailing slash removed). The fallback is the same URL. |
+
+`NEXT_PUBLIC_*` values are **inlined at build time**, so changing them requires `next build` again. The origin the web app is served from (for example `http://localhost:3000`) must be listed in the backend's `CORS_ORIGINS`.
+
+## Generating secrets
+
+```bash
+openssl rand -hex 32   # JWT_SECRET (any long random string works)
+openssl rand -hex 32   # ENCRYPTION_KEY (must be exactly 64 hex chars)
+# or, without openssl:
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+`npm run setup` does this automatically the first time it creates `backend/.env`.
+
+<Callout type="warn" title="Treat ENCRYPTION_KEY as non-rotatable data">
+Stored vendor credentials can only be decrypted with the key that encrypted them. Keep a copy in your secrets manager. Changing the key forces every integration to be reconnected.
+</Callout>
+
+## Recommended values per environment
+
+| Variable | Local development | Test (vitest) | Staging | Production |
+|---|---|---|---|---|
+| `NODE_ENV` | `development` | `test` (set by `vitest.config.ts`) | `production` | `production` |
+| `JWT_SECRET` | generated by setup | `test-secret-test-secret-test-secret` | unique secret | unique secret (Secrets Manager) |
+| `ENCRYPTION_KEY` | generated by setup | `"1".repeat(64)` | unique | unique, backed up |
+| `JWT_EXPIRES_IN` | `7d` | default | `1d` | `8h`–`1d` |
+| `CORS_ORIGINS` | `http://localhost:3000` | n/a (supertest has no Origin) | staging web URL | production web URL(s) only |
+| `LOG_LEVEL` | `debug` / `info` | silent (forced) | `info` | `info` |
+| `RATE_LIMIT_MAX` | `600` | `100000` | `600` | tune per traffic; also limit at the ALB/WAF |
+| `ENABLE_SIMULATION` | `true` | `true` | `true` if useful for demos | `false` |
+| `ENABLE_ADMIN_RESET` | `true` | `true` | `false` (off anyway in prod mode) | `false` (forced off) |
+| `DB_DRIVER` / `DATA_DIR` | `json` / `./db` | `json` / `os.tmpdir()/selleasy-test-<pid>` | `json` on a persistent volume until Postgres lands | `postgres` once implemented |
+| `*_PROVIDER` | `mock` | `mock` | real adapters as they land | real adapters |
+| `SLACK_WEBHOOK_URL` | empty | empty | staging channel | production channel |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:4000/api/v1` | — | `https://api.staging…/api/v1` | `https://api…/api/v1` |
+
+See [Deployment](/docs/engineering/deployment) for the full production checklist.
