@@ -22,10 +22,10 @@ flowchart TB
   subgraph DEMO["Stakeholder demo (today)"]
     vweb["Vercel<br/>DATA_SOURCE=mock"] --> vls[("Each viewer's localStorage<br/>demo workspace")]
   end
-  subgraph STG["Staging (Phase 1)"]
+  subgraph STG["Staging (Month 1)"]
     sweb["Vercel or CloudFront<br/>DATA_SOURCE=api"] --> sapi["API on ECS<br/>RDS · sandbox vendor keys"]
   end
-  subgraph PROD["Production (Phase 1 → GA)"]
+  subgraph PROD["Production (Month 1 to GA)"]
     pweb["CloudFront or Vercel<br/>DATA_SOURCE=api"] --> papi["API on ECS<br/>RDS Multi-AZ · real vendors"]
   end
   LOCAL -- "PR merged" --> STG
@@ -43,7 +43,7 @@ flowchart TB
 | **`ENABLE_SIMULATION`** | `true` | always on (fixed) | `true` if useful | **`false`** |
 | **`ENABLE_ADMIN_RESET`** | `true` | always on (fixed) | `false` | `false` (forced off) |
 | **Data** | `seed:demo` or empty `bootstrap` | Demo workspace "Acme Growth Inc." | Synthetic + pilot rehearsal data | Customer data |
-| **Available** | Today | **Today** | Phase 1 | Phase 1 (pilot), GA at end of Phase 3 |
+| **Available** | Today | **Today** | Month 1 (23 Oct 2026) | Month 1 (30 Oct 2026); design-partner pilot from 16 Nov; GA 31 Dec 2026 |
 
 ## How mock mode works
 

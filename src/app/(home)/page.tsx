@@ -1,5 +1,16 @@
 import Link from 'next/link';
-import { BotIcon, CodeIcon, CompassIcon, GaugeIcon, RadioTowerIcon, SendIcon } from 'lucide-react';
+import {
+  BotIcon,
+  CodeIcon,
+  CompassIcon,
+  GaugeIcon,
+  IndianRupeeIcon,
+  MilestoneIcon,
+  NetworkIcon,
+  RadioTowerIcon,
+  SendIcon,
+  TargetIcon,
+} from 'lucide-react';
 
 const pillars = [
   {
@@ -24,6 +35,51 @@ const pillars = [
   },
 ];
 
+const sections = [
+  {
+    icon: CompassIcon,
+    title: 'Product',
+    href: '/docs/product',
+    audience: 'Product managers & GTM',
+    body: 'Problem, personas, core concepts, end-to-end journeys, a guide to every feature, roles, metrics and status.',
+  },
+  {
+    icon: NetworkIcon,
+    title: 'Product architecture',
+    href: '/docs/architecture',
+    audience: 'Stakeholders & leads',
+    body: 'The layers, capability maturity, data flows, the integration landscape, environments and the target AWS platform.',
+  },
+  {
+    icon: TargetIcon,
+    title: 'MVP scope',
+    href: '/docs/mvp-scope',
+    audience: 'Everyone',
+    body: 'What the first customer-ready release includes and excludes, acceptance criteria, success metrics and launch checklist.',
+  },
+  {
+    icon: MilestoneIcon,
+    title: 'Roadmap (3 months)',
+    href: '/docs/roadmap',
+    audience: 'Planning',
+    body: 'Month-by-month delivery plan for a three-engineer, AI-assisted team, with gates, dependencies and risks.',
+  },
+  {
+    icon: IndianRupeeIcon,
+    title: 'Team & cost',
+    href: '/docs/team-and-cost',
+    audience: 'Founders & finance',
+    body: 'The three-person team plan and the estimated budget in rupees: people, infrastructure, vendors and AI.',
+  },
+  {
+    icon: CodeIcon,
+    title: 'Engineering',
+    href: '/docs/engineering',
+    audience: 'Developers',
+    body: 'Local setup, architecture, data model, the full API reference, the frontend data layer, configuration and deployment.',
+  },
+];
+
 export default function HomePage() {
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-12 px-6 py-16">
@@ -33,13 +89,19 @@ export default function HomePage() {
         </span>
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">SellEasy</h1>
         <p className="max-w-2xl text-lg text-fd-muted-foreground">
-          The agentic GTM platform that turns buying signals into pipeline. Learn what it does, how it works, and how
-          it is built.
+          The agentic GTM platform that turns buying signals into pipeline. Learn what it does, how it works, what ships
+          first, and what it takes to build.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <Link
-            href="/docs/product"
+            href="/docs"
             className="inline-flex items-center gap-2 rounded-lg bg-fd-primary px-4 py-2 text-sm font-medium text-fd-primary-foreground"
+          >
+            Start reading
+          </Link>
+          <Link
+            href="/docs/product"
+            className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-fd-accent"
           >
             <CompassIcon className="size-4" /> Product docs
           </Link>
@@ -62,21 +124,18 @@ export default function HomePage() {
         ))}
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2">
-        <Link href="/docs/product" className="rounded-xl border p-6 transition-colors hover:bg-fd-accent">
-          <h2 className="text-lg font-semibold">For product managers</h2>
-          <p className="mt-2 text-sm text-fd-muted-foreground">
-            Problem, personas, core concepts, end-to-end journeys, a guide to every feature, roles, metrics and
-            roadmap.
-          </p>
-        </Link>
-        <Link href="/docs/engineering" className="rounded-xl border p-6 transition-colors hover:bg-fd-accent">
-          <h2 className="text-lg font-semibold">For developers</h2>
-          <p className="mt-2 text-sm text-fd-muted-foreground">
-            Local setup, architecture, data model, backend internals, full API reference, frontend data layer,
-            configuration, testing and deployment.
-          </p>
-        </Link>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">All documentation</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {sections.map((s) => (
+            <Link key={s.href} href={s.href} className="rounded-xl border p-5 transition-colors hover:bg-fd-accent">
+              <s.icon className="mb-3 size-5 text-fd-primary" />
+              <h3 className="font-semibold">{s.title}</h3>
+              <p className="text-xs text-fd-muted-foreground">{s.audience}</p>
+              <p className="mt-2 text-sm text-fd-muted-foreground">{s.body}</p>
+            </Link>
+          ))}
+        </div>
       </section>
     </main>
   );

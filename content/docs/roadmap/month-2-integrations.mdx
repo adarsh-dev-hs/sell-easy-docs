@@ -1,0 +1,161 @@
+---
+title: Month 2 · Real integrations
+description: 3 November to 30 November 2026 — the intent webhook, HubSpot sync, the sequence scheduler, reply capture and background jobs, proven on design-partner data.
+icon: Plug
+---
+
+**Dates:** Tuesday 3 November – Monday 30 November 2026 (weeks 5–8, gate on 30 November).
+**Team:** SSE + SE-1 + SE-2. Founder as PM and design-partner owner.
+
+## Objective
+
+> Close the loop on real data. A real intent signal from a real vendor arrives by webhook, the agent scores and drafts, an approver sends, the sequence advances on a schedule from a warmed mailbox, the prospect's reply lands in the inbox, and the resulting deal appears in the partner's HubSpot — for 2–3 design partners, on their own accounts and contacts.
+
+Month 1 made the product real. Month 2 makes it **useful**, and puts it in front of people who did not build it.
+
+<Callout type="info" title="This is the month with the most unknowns">
+Three of these epics — the scheduler, reply capture and two-way CRM sync — are the parts of the product that have **never existed**, not mocks being replaced. They are where estimates are least reliable, so they start in week 5 and each has a named reduced version to fall back to.
+</Callout>
+
+## Scope by epic
+
+| Epic | Owner | Weeks | Status today | Reference |
+|---|---|---|---|---|
+| **E11 · Background job runner** | SSE | W5–W6 | Nothing scheduled runs | [Tech debt #6, #8](/docs/engineering/tech-debt) |
+| **E12 · Sequence step scheduler and sending engine** | SSE + SE-2 | W5–W7 | Not built | [Tech debt #3](/docs/engineering/tech-debt), [Outreach API](/docs/engineering/api/outreach) |
+| **E13 · Intent webhook connector (RB2B or Trigify)** | SE-1 | W5–W6 | Generic webhook + Simulate only | [Signals & webhooks](/docs/engineering/api/signals-and-webhooks) |
+| **E14 · HubSpot two-way sync** | SE-1 | W6–W8 | Fake CRM ids | [Data flows](/docs/architecture/data-flows) |
+| **E15 · Inbound reply capture** | SE-1 + SE-2 | W7–W8 | Inbox is seed data | [Tech debt #9](/docs/engineering/tech-debt) |
+| **E16 · Sequence stats and deliverability signals** | SE-2 | W7–W8 | Modelled / synthetic | [Tech debt #13, #14, #17](/docs/engineering/tech-debt) |
+| **E17 · Pilot onboarding and partner support** | SE-2 + founder | W7–W8 | — | [MVP acceptance criteria](/docs/mvp-scope/acceptance-criteria) |
+
+### E11 · Background job runner — SSE
+
+The deliberately small version of "async". **No EventBridge, no SQS** — those are [post-launch](/docs/roadmap/beyond-the-mvp). Instead: a scheduled worker process on ECS with a Postgres-backed job table (`SELECT ... FOR UPDATE SKIP LOCKED`), at-least-once delivery, retry with backoff, a dead-letter state that is visible in the admin UI, and idempotency keys on every job.
+
+Jobs it runs: due sequence steps (every minute), nightly intent re-scoring and decay ([Scoring engine](/docs/engineering/backend/scoring-engine)), sequence-stat rollups, CRM sync retries, and daily mailbox counter resets.
+
+This choice is an explicit trade: it is roughly a week of work versus roughly a month for the event-bus rewrite, and it is sufficient below a few thousand jobs an hour. It is recorded as an ADR with the volume at which it must be revisited.
+
+### E12 · Sequence step scheduler and sending engine — SSE + SE-2
+
+The largest single build of the three months. It makes the already-stored `SequenceSettings` mean something:
+
+- Select `active` enrollments with `nextStepAt ≤ now` that fall inside the configured send window (`sendDays`, `startHour`, `endHour`, `timezone`).
+- Pick a mailbox from `mailboxIds` round-robin, respecting `dailyLimit`, and increment `sentToday`.
+- Render and send the step through SES, then advance `currentStep` and `nextStepAt` by the next step's `dayOffset`, update `stats.sent`, and log an activity.
+- `wait` steps only move `nextStepAt`. Task steps create tasks.
+- `stopOnReply` halts the enrollment when a reply is captured; suppression and unsubscribe lists are honoured; the enrollment is marked `completed` after the last step.
+- Reset `sentToday` daily.
+
+**Reduced fallback if it slips:** send windows plus daily limits but a single mailbox per sequence, and no time-zone-aware scheduling (workspace time zone only).
+
+### E13 · Intent webhook connector — SE-1
+
+**One vendor, not three. RB2B is the preference; Trigify is the fallback** if RB2B access does not arrive in time. Whichever lands first is the one that ships; the other is deferred.
+
+Signed webhook payloads, vendor-specific mapping to the existing signal shape, replay protection, per-org secrets, and a recorded-fixture test suite so the connector can be finished before partner traffic exists. Once it is live, `POST /signals/simulate` and the Simulate button come out of production ([Tech debt #5](/docs/engineering/tech-debt)).
+
+### E14 · HubSpot two-way sync — SE-1
+
+Contacts, companies and deals. Push from SellEasy on the events that matter (account becomes a target, draft sent, deal stage change), pull on a schedule to catch CRM-side changes, with a documented conflict policy.
+
+**The conflict policy must be decided by 6 November** — CRM wins, SellEasy wins, or most recent wins — because the sync design depends on it ([Decisions](/docs/architecture/decisions#open-decisions)). A private HubSpot app is enough for pilots; **no marketplace listing is attempted**, since the review alone would consume the remaining timeline.
+
+**Reduced fallback:** one-way push from SellEasy to HubSpot plus a scheduled pull of deal stages only.
+
+### E15 · Inbound reply capture — SE-1 + SE-2
+
+IMAP polling or a provider webhook, whichever the partners' mailboxes support. Thread matching back to the enrollment and contact, reply detection driving `stopOnReply`, bounce and out-of-office classification kept simple (bounce, auto-reply, human reply), and messages surfaced in the existing inbox UI. Claude reply suggestions from Month 1 are wired to real threads.
+
+### E16 · Sequence stats and deliverability signals — SE-2
+
+Replace the synthetic per-step performance numbers with real counters from the send path and SES events: sent, delivered, bounced, replied, per step and per enrollment. Mailbox health derived from actual bounce and complaint rates rather than computed in the frontend, with an automatic pause when a mailbox crosses a threshold.
+
+### E17 · Pilot onboarding and partner support — SE-2 + founder
+
+Import the partner's accounts and contacts, configure their ICP and playbooks with them, connect their HubSpot and mailboxes, walk through a first approval together, and set up a weekly scorecard. Every partner gets a named engineer. Feedback goes into one triage list that the founder ranks weekly; only P0 bugs and one-line fixes jump the queue mid-week.
+
+## Week by week
+
+| Week | Dates | SSE | SE-1 | SE-2 |
+|---|---|---|---|---|
+| **W5** | 3–6 Nov | Job runner: job table, worker process, retries, DLQ | Intent connector: vendor mapping, signature verification, fixtures | Scheduler: send windows, mailbox rotation, daily limits |
+| **W6** | 9–13 Nov | Scheduler send path on SES; idempotency; **conflict policy decided (6 Nov)** | Intent connector live in staging; HubSpot app, contacts and companies | Sequence UI for schedule state; suppression and unsubscribe |
+| **W7** | 16–20 Nov | Nightly re-scoring job; stat rollups; **pilot starts 16 Nov** | HubSpot deals, pull sync, conflict handling | Reply capture UI; inbox threading; partner onboarding #1 |
+| **W8** | 23–27 Nov | Pilot support, job-failure triage, load sanity check | Reply capture backend; bounce and complaint classification | Real sequence stats; mailbox health; partner onboarding #2 and #3 |
+| **Gate** | Mon 30 Nov | **G2 · Pilot gate** — go/no-go into Month 3 | | |
+
+## Where AI assistance helps most this month
+
+| Task | How AI assistance is used | Realistic saving |
+|---|---|---|
+| HubSpot adapter | Generate the client, object mappings and pagination from the HubSpot API docs plus the existing CRM interface | **High** — this is the single biggest AI win of the plan |
+| Intent connector | Generate payload mapping, signature verification and fixture tests from the vendor's sample payloads | High |
+| Job runner | Generate the `SKIP LOCKED` queue, retry and backoff code plus its tests | Medium |
+| Scheduler | Generate the time-window and time-zone arithmetic **and its property-based tests** — the tests are where the value is, because the edge cases are what break | Medium–high |
+| IMAP / reply parsing | Generate thread-matching and header-parsing code with a fixture corpus of real replies | High |
+| Partner onboarding material | Generate the per-partner runbook and the weekly scorecard template | High |
+
+It does **not** help with: getting RB2B or Trigify access granted, partner mailbox permissions, the conflict-policy decision, or interpreting what a partner actually means when they say the drafts "feel off".
+
+## Deliverables
+
+<Cards>
+  <Card title="Background job runner" description="Postgres-backed queue on ECS with retries, backoff, dead-letter state and idempotency." />
+  <Card title="Sequence scheduler" description="Send windows, day offsets, mailbox rotation, daily limits, stop-on-reply, completion." />
+  <Card title="One intent connector" description="RB2B or Trigify, signed webhooks, vendor mapping, replay protection; simulation removed from production." />
+  <Card title="HubSpot two-way sync" description="Contacts, companies and deals, push plus scheduled pull, documented conflict policy." />
+  <Card title="Inbound reply capture" description="Replies threaded into the inbox, driving stop-on-reply and Claude reply suggestions." />
+  <Card title="Real sequence stats" description="Counters from the send path and SES events; mailbox health from real bounces." />
+  <Card title="Live pilot" description="2–3 design partners running their own data, with a named engineer and a weekly scorecard." />
+</Cards>
+
+## Exit criteria (G2 · Pilot gate, 30 November)
+
+- [ ] At least **two design partners** have been live on their own data for **two weeks or more**.
+- [ ] For each live partner, the full loop has run at least once end to end: real intent signal → agent run → Claude draft → human approval → email sent from a warmed mailbox → reply captured in the inbox → deal visible in their HubSpot.
+- [ ] The scheduler sends **≥ 99% of due steps inside the configured window**, measured over a week.
+- [ ] Sequence stats reconcile with SES events; no synthetic numbers remain in the UI.
+- [ ] Failed jobs are retried, surface in the dead-letter view, and the dead-letter view is empty at the gate.
+- [ ] `POST /signals/simulate` and the Simulate button are gone from production.
+- [ ] HubSpot sync survives a conflict scenario per the documented policy, with no duplicate deals created in a week of pilot traffic.
+- [ ] Domain and mailbox warm-up has reached the volume the pilots need, with bounce rate ≤ 2%.
+- [ ] Every MVP **Must-have** in [MVP scope → In scope](/docs/mvp-scope/in-scope) is either done or has a dated plan inside Month 3.
+
+## KPIs
+
+| KPI | Target |
+|---|---|
+| Design partners live on real data | 2–3 |
+| Loop completions (signal → sent email) per partner per week | ≥ 1 |
+| Deals synced to HubSpot per partner | ≥ 1 |
+| Webhook ingest p95 | ≤ 1 s |
+| Due steps sent inside the send window | ≥ 99% |
+| Reply capture latency | ≤ 5 min |
+| Bounce rate | ≤ 2% |
+| Dead-letter jobs at the gate | 0 |
+| Draft approval rate | ≥ 50% (trending up) |
+
+## Risks specific to Month 2
+
+| Risk | Likelihood | Impact | Mitigation | Owner |
+|---|---|---|---|---|
+| Scheduler complexity underestimated (time zones, windows, mailbox limits, threading) | **H** | **H** | Start week 5; property-based tests on window arithmetic; named reduced version (single mailbox, workspace time zone) | SSE |
+| RB2B **and** Trigify access both delayed | M | **H** | Build against recorded fixtures; the generic webhook plus a Zapier bridge is a working fallback that needs no vendor | SE-1 |
+| HubSpot sync takes longer than three weeks | M | **H** | Reduced fallback is one-way push plus deal-stage pull; decide by 20 Nov | SE-1 |
+| Reply capture blocked by partner mailbox policy (OAuth scopes, IT approval) | M | M | Ask for mailbox access in the partner kickoff, not in week 7; support both IMAP and provider webhooks | SE-1 |
+| Partner feedback creates mid-month scope churn | **H** | M | One ranked triage list, ranked weekly by the founder; only P0 bugs jump the queue | Founder |
+| Pilot data reveals real bugs in the existing scoring / dedup / agent logic at real volumes | M | M | It is the point of the pilot — reserve ~20% of Month 3 capacity for burn-down | SSE |
+| Deliverability damaged by sending too much too early | M | **H** | Hard daily caps well below warm-up capacity; approval on by default; monitor bounces daily | SSE |
+
+## Cut first if the month is slipping
+
+In this order: **E16** (keep basic counters, drop mailbox health automation) → **E14 reduced** to one-way push plus deal-stage pull → **E15 reduced** to reply detection only, with no threading UI. **E11, E12 and E13 are not cuttable** — without them there is no loop to launch.
+
+## Related
+
+- [Month 1 · Foundation](/docs/roadmap/month-1-foundation) · [Month 3 · Harden & launch](/docs/roadmap/month-3-launch)
+- [Timeline](/docs/roadmap/timeline) · [Dependencies & risks](/docs/roadmap/dependencies-and-risks)
+- [Engineering → Tech debt](/docs/engineering/tech-debt) · [Orchestration agent](/docs/engineering/backend/orchestration-agent) · [Outreach API](/docs/engineering/api/outreach) · [Signals & webhooks](/docs/engineering/api/signals-and-webhooks)
+- [Architecture → Data flows](/docs/architecture/data-flows) · [Decisions](/docs/architecture/decisions)

@@ -1,170 +1,200 @@
 ---
 title: Vendor & AI cost
-description: Indicative cost ranges for SellEasy's data, intent, outreach and CRM vendors, the Claude usage cost model with monthly scenarios, and team tooling.
-icon: Receipt
+description: Claude Code seats for AI-assisted development, the product's own LLM cost model with rupee scenarios, indicative data and outreach vendor ranges, and team tooling.
+icon: Plug
 ---
 
-This page covers three cost lines: **third-party vendors** used by the product, **Claude (LLM) usage**, and **team tooling**. Infrastructure is on [Infrastructure cost](/docs/team-and-cost/infrastructure-cost).
+Three cost lines sit here: **AI tooling the team codes with**, **LLM usage the product itself consumes**, and **third-party vendors and SaaS**. Cloud is in [Infrastructure cost](/docs/team-and-cost/infrastructure-cost); salaries are in [People cost](/docs/team-and-cost/people-cost).
 
-<Callout type="warn" title="Indicative — verify with each vendor">
-Prices below are **indicative ranges** based on publicly listed tiers where they exist. Many of these vendors are **quote-based or change tiers often** (Bombora, Apollo enterprise, Clearbit / HubSpot Breeze Intelligence, RB2B, HeyReach, Instantly, Mailpool, Fireflies). Treat every figure as a starting point for a conversation and **verify with the vendor** before budgeting.
+<Callout type="warn" title="Verify everything on this page">
+Vendor prices are **indicative ranges** from publicly listed tiers where they exist. Many of these vendors quote privately or change tiers often — **verify with each vendor**. Anthropic prices are an **assumption; verify current Anthropic pricing** before budgeting. USD converted at **₹88 per USD**.
 </Callout>
 
-## Who pays for vendors?
+## Summary
 
-SellEasy stores **per-workspace vendor keys** ([Integrations](/docs/product/features/integrations)), so customers can bring their own contracts. That changes who pays:
+| Line | Low | **Expected** | High |
+|---|--:|--:|--:|
+| AI-assisted development tooling (3 seats + API) | ₹37,000 | **₹92,000** | ₹1,90,000 |
+| The product's own LLM usage | ₹15,000 | **₹38,000** | ₹75,000 |
+| Data, intent, outreach and CRM vendors | ₹30,000 | **₹75,000** | ₹1,80,000 |
+| **Vendors & AI total (3 months)** | **₹82,000** | **₹2,05,000** | **₹4,45,000** |
+| Team tooling *(budgeted under "Tooling & one-offs")* | ₹18,000 | **₹40,000** | ₹75,000 |
 
-| Model | SellEasy pays | Customer pays | Used for |
-|---|---|---|---|
-| **Bring your own key** (default) | Development, sandbox and pilot-support plans only | Their vendor subscriptions | Enrichment, TAM, intent, scraping, Instantly / Mailpool, HeyReach, Fireflies |
-| **OAuth app** | Developer accounts (usually free); marketplace or security-review fees | Their CRM licences | HubSpot, Salesforce, Attio |
-| **Platform-owned** | Full usage (cost of goods sold) | Included in the SellEasy plan (with limits) | Anthropic Claude, AWS SES |
-| **Resold / bundled** (optional, later) | Wholesale contract | Credits in the SellEasy plan | Possible for enrichment or intent — not assumed in this budget |
+## AI-assisted development tooling
 
-The budget assumes **bring your own key** for everything except Claude and SES.
+This is the line that makes the rest of the plan work. Three engineers delivering the [roadmap](/docs/roadmap) in 13 weeks assumes AI pair programming throughout — the throughput assumption is quantified in [Team plan](/docs/team-and-cost/team-plan#how-ai-assistance-changes-throughput). Treat these seats as **non-negotiable equipment**, like the laptops.
 
-## Vendor price ranges
+| Item | Per engineer / month | 3 engineers / month | **3 months** |
+|---|--:|--:|--:|
+| Claude Code subscription (Max 5× tier, ~$100) | $100 ≈ **₹8,800** | $300 ≈ **₹26,400** | **₹79,200** |
+| Anthropic API top-ups — CI agents, batch refactors, doc generation | ~$17 ≈ **₹1,467** | ~$50 ≈ **₹4,400** | **₹13,200** |
+| **Expected total** | **≈ ₹10,267** | **≈ ₹30,800** | **≈ ₹92,000** |
 
-| Category | Vendor | Pricing model | Indicative public range | SellEasy's own need during the build | Budgeted monthly (expected) |
-|---|---|---|---|---|--:|
-| Enrichment | **Clearbit** (now HubSpot Breeze Intelligence) | Credits, bundled with HubSpot plans | ~$45–$150+/mo for entry credit packs; higher tiers quote-based — **verify** | One test account | $50–$150 |
-| Enrichment | **FullEnrich** | Credits | ~$30–$100/mo entry; volume tiers — **verify** | Test credits | $30–$60 |
-| Enrichment | **Prospeo** | Credits | ~$40–$100/mo entry — **verify** | Test credits | $40 |
-| TAM & contacts | **Apollo.io** | Per seat; API access on higher tiers; enterprise quote | ~$50–$150 per user/mo; API-enabled plans often need several seats — **verify** | API-enabled plan | $150–$400 |
-| TAM & contacts | **Limadata** | Usage / quote | Quote-based — **verify** | Phase 4 only | $0–$200 |
-| Intent | **Bombora** | Annual data agreement | Enterprise, commonly tens of thousands of dollars per year — **quote-based, verify** | Only if a partner agreement is signed (high scenario) | $0 (expected) · $2k–$5k (high) |
-| Intent | **RB2B** | Free tier + paid tiers | ~$0–$150/mo for entry tiers; higher tiers and partner/API access vary — **verify** | Test site + API access | $100–$300 |
-| Intent | **Trigify.io** | Subscription | ~$100–$500/mo — **verify** | Test account | $100–$300 |
-| Scraping | **Apify** | Subscription + usage | ~$39–$200/mo — **verify** | Actors for job boards and sites | $50–$200 |
-| Research | **Linkup** | Pay per query | Low cents per query — **verify** | Research agent tests | $20–$150 |
-| Email | **AWS SES** | $0.10 per 1,000 emails + extras | See [Infrastructure cost](/docs/team-and-cost/infrastructure-cost) | Platform-owned | (in infra) |
-| Email | **Mailpool** | Per inbox + domains | Roughly a few dollars per inbox per month — **verify** | 10–20 test inboxes | $50–$150 |
-| Email | **Instantly.ai** | Tiered subscription | ~$40–$400/mo depending on tier — **verify** | API-enabled plan | $100–$300 |
-| LinkedIn | **HeyReach** | Per sender seat; agency tiers | ~$80 per sender/mo; agency bundles higher — **verify** | 1–3 test senders | $80–$250 |
-| CRM | **HubSpot** | Free developer / test accounts | $0 for app development; marketplace listing requirements apply | Developer account | $0 |
-| CRM | **Salesforce** | Developer Edition free; ISV / AppExchange programme | $0 to develop; security review and partner fees apply — **verify** | Developer org + review (Phase 4) | $0–$300 |
-| CRM | **Attio** | Free / per-seat plans | ~$0–$100/mo for a test workspace — **verify** | Test workspace | $0–$50 |
-| Calls | **Fireflies.ai** | Per seat; API on business tiers | ~$20–$40 per seat/mo — **verify** | 2–3 seats (Phase 4) | $60–$120 |
-| Billing | **Stripe** (or similar) | % of revenue | ~2.9% + fixed fee per card charge; Billing add-on % — **verify** | Phase 4 | Revenue-linked |
+| Case | Setup | Per month | **3 months** |
+|---|---|--:|--:|
+| **Low** | 1 × Max 5× (the SSE) + 2 × Pro (~$20), no API top-ups | ~$140 ≈ ₹12,320 | **₹37,000** |
+| **Expected** | 3 × Max 5× + modest API usage | ~$350 ≈ ₹30,800 | **₹92,000** |
+| **High** | 3 × Max 20× (~$200) + heavier API usage for agentic batch work | ~$750 ≈ ₹66,000 | **₹1,90,000** |
 
-### Vendor spend during the build (expected)
+<Callout type="info" title="The cheapest line in the budget to get wrong in your favour">
+₹92,000 of AI tooling sits against ₹11,50,000 of salary — **8% of people cost**. If it lifts throughput by even 10%, it pays for itself roughly three times over. Conversely, downgrading the team to the low case saves ₹55,000 and risks a schedule slip that costs ₹2.2L per fortnight. Do not economise here.
+</Callout>
 
-| Month | Active vendor plans | Expected monthly |
-|---|---|--:|
-| M1 | Enrichment test account, Anthropic (separate line) | $500 |
-| M2 | + second enrichment test, RB2B | $1,500 |
-| M3–M4 | + Trigify, Apollo API plan, pilot support credits | $3,000 |
-| M5–M6 | + Instantly, Mailpool, HeyReach, Apify, Linkup | $4,000 |
-| M7–M9 | + Salesforce review, Attio, Fireflies, Limadata | $5,000 |
-| **6-month total** | | **$16.0k** (low $8.0k, high $28.8k) |
-| **9-month total** | | **$31.0k** (low $15.5k, high $55.8k) |
+## The product's own LLM cost
 
-The high case (×1.8) allows for a Bombora agreement or for SellEasy funding pilot customers' data credits.
-
-## Claude (LLM) cost model
-
-SellEasy uses Claude through the `LlmProvider` adapter: `claude-opus-5` by default (`ANTHROPIC_MODEL`) and `claude-haiku-4-5` for fast, high-volume tasks (`ANTHROPIC_FAST_MODEL`). The in-app LLM settings also offer `claude-sonnet-5`.
+SellEasy calls Claude through the `LlmProvider` adapter for outreach drafting, reply sentiment and (later) account research. That usage is **cost of goods sold**, not developer tooling, and it is modelled separately.
 
 ### Price assumptions
 
-| Model | Input $ / million tokens | Output $ / million tokens | Cached input (read) $ / million tokens |
-|---|--:|--:|--:|
-| `claude-opus-5` | $5.00 | $25.00 | ~$0.50 |
-| `claude-sonnet-5` | $2.00 | $10.00 | ~$0.20 |
-| `claude-haiku-4-5` | $1.00 | $5.00 | ~$0.10 |
-
-<Callout type="warn" title="Assumption — check current Anthropic pricing">
-These are first-party API list prices used for planning. Cached-read prices assume ~10% of the input price. Cache writes cost more than normal input, and the Batch API is assumed to halve token prices for non-urgent work. Web search is assumed at **$10 per 1,000 searches**. Confirm all of these on Anthropic's pricing page before budgeting.
+<Callout type="warn" title="Assumption — verify current Anthropic pricing">
+List prices per **million** tokens, converted at ₹88 per USD. Cached reads are assumed at roughly 10% of the input price; the Batch API is assumed to halve token prices for non-urgent work. **Confirm all of these on Anthropic's pricing page before committing to a number.**
 </Callout>
+
+| Model | Input $ / Mtok | Output $ / Mtok | **Input ₹ / Mtok** | **Output ₹ / Mtok** |
+|---|--:|--:|--:|--:|
+| `claude-opus-5` | $5.00 | $25.00 | **₹440** | **₹2,200** |
+| `claude-sonnet-5` | $2.00 | $10.00 | **₹176** | **₹880** |
+| `claude-haiku-4-5` | $1.00 | $5.00 | **₹88** | **₹440** |
 
 ### Formula
 
 ```text
-monthly LLM cost = Σ over tasks of
-    calls_per_day × 30 × regeneration_factor
-  × ( input_tokens  × input_price
-    + output_tokens × output_price
-    + cached_tokens × cached_price ) ÷ 1,000,000
-  + tool fees (for example web searches × price per search)
+monthly cost (₹) =
+    calls_per_day
+  × 30
+  × regeneration_factor
+  × [ (input_tokens  ÷ 1,000,000) × input_price_inr
+    + (output_tokens ÷ 1,000,000) × output_price_inr ]
 ```
 
-### Per-task assumptions
+Assumptions used below: an outreach draft is **3,000 input / 800 output tokens** (system prompt, playbook guidance, account, contact and signal context, plus the drafted email); a reply triage is **1,500 / 200**; the **regeneration factor is 1.2**, meaning one draft in five is regenerated once.
 
-| Task | Model | Input tokens | Output tokens | Notes | Cost per call |
-|---|---|--:|--:|---|--:|
-| Outreach draft | Opus 5 | 3,000 | 800 | System prompt, playbook guidance, account, contact and signal context; output includes adaptive thinking | **$0.035** (no cache) · **$0.026** (2,000 tokens cached) |
-| Outreach draft | Sonnet 5 | 3,000 | 800 | Same prompt | $0.014 · $0.010 (cached) |
-| Outreach draft | Haiku 4.5 | 3,000 | 800 | Same prompt | $0.007 |
-| Reply sentiment + suggestion | Haiku 4.5 | 1,500 | 200 | Per inbound reply | $0.0025 |
-| Account research (Phase 3) | Opus 5 | 20,000 | 2,000 | Plus ~5 web searches | $0.20 · $0.125 via Batch API |
+### Cost per call
 
-Regeneration factor: **1.2** (20% of drafts are regenerated once).
+| Task | Model | Tokens (in / out) | Working | **₹ per call** |
+|---|---|---|---|--:|
+| Outreach draft | Opus 5 | 3,000 / 800 | (0.003 × ₹440) + (0.0008 × ₹2,200) = ₹1.32 + ₹1.76 | **₹3.08** |
+| Outreach draft | Sonnet 5 | 3,000 / 800 | (0.003 × ₹176) + (0.0008 × ₹880) = ₹0.53 + ₹0.70 | **₹1.23** |
+| Outreach draft | Haiku 4.5 | 3,000 / 800 | (0.003 × ₹88) + (0.0008 × ₹440) = ₹0.26 + ₹0.35 | **₹0.62** |
+| Reply sentiment + suggestion | Haiku 4.5 | 1,500 / 200 | (0.0015 × ₹88) + (0.0002 × ₹440) = ₹0.13 + ₹0.09 | **₹0.22** |
 
-**Worked example (MVP scale, all Opus, no caching):** 500 drafts/day × 30 × 1.2 × $0.035 = **$630**; 50 replies/day × 30 × $0.0025 = **$4**; 50 research runs/day × 30 × $0.20 = **$300**. Total ≈ **$934 per month**.
+### Three usage scenarios
 
-### Monthly scenarios
+Monthly, 30 days, regeneration factor applied to drafts.
 
-| Scenario | Workspaces | Drafts / day | Replies / day | Research / day | All Opus, no optimisation | Optimised (caching + batch research) | Sonnet for drafts (cached) + batch research |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **Pilot** (Phase 1–2) | 5–8 | 200 | 20 | 0 | ~$255 | ~$190 | ~$75 |
-| **MVP** (Phase 2) | ~20 | 500 | 50 | 50 | ~$930 | ~$660 | ~$380 |
-| **GA** (Phase 3) | ~100 | 2,500 | 250 | 250 | ~$4,670 | ~$3,300 | ~$1,890 |
-| **Growth** (Phase 4+) | ~200 | 5,000 | 500 | 1,000 | ~$12,340 | ~$8,470 | ~$5,660 |
+| Scenario | When | Drafts / day | Replies / day | **All Opus** | **All Sonnet** | **All Haiku** |
+|---|---|--:|--:|--:|--:|--:|
+| **Development & evaluation** | M1–M2 (Oct–Nov) | ~150 model calls/day from test and eval runs, no live traffic | — | ₹15,000 | **₹6,000** | ₹3,000 |
+| **Pilot** | M3 (Dec), 3–5 workspaces | 200 | 20 | **₹22,300** | ₹9,000 | ₹4,600 |
+| **Early post-launch** | Jan 2027 onwards, ~15 workspaces | 500 | 50 | ₹55,800 | ₹22,500 | ₹11,500 |
 
-**What this means**
+Worked example, the pilot row on Opus: `200 × 30 × 1.2 × ₹3.08 = ₹22,176` for drafts, plus `20 × 30 × ₹0.22 = ₹132` for reply triage, total **₹22,308**.
 
-- At growth scale, Claude costs roughly **$28–$62 per workspace per month**, depending on the model mix. Plan pricing and the per-workspace **monthly token budget** (already a setting) should cover it.
-- Cost **per approved draft** with Opus at a 70% approval rate is about $0.035 × 1.2 ÷ 0.7 ≈ **$0.06**, within the $0.10 guardrail in [Success metrics](/docs/mvp-scope/success-metrics#guardrails).
-- Research is the largest variable cost; cap it per workspace and run bulk research through the Batch API.
+**What that tells you**
 
-### Claude spend during the build (expected)
+- **Model choice moves this line 5×.** Sonnet drafts cost 40% of Opus; Haiku costs 20%. Run an eval set before defaulting to Opus — if Sonnet clears your approval-rate bar, it saves ₹13,000 a month at pilot scale alone.
+- **Prompt caching is the next lever.** Caching the ~2,000-token system and playbook prefix cuts input cost on repeat calls by roughly 90%, which is about 25% off an Opus draft.
+- **Cost per approved draft** on Opus at a 70% approval rate is `₹3.08 × 1.2 ÷ 0.7 ≈ ₹5.3` — comfortably inside a ₹9 (≈$0.10) guardrail. Track it against [Success metrics](/docs/mvp-scope/success-metrics).
+- **Research is the runaway risk** once it ships. An account research run at 20,000 in / 2,000 out on Opus costs about **₹13 per account**, before web search fees. Cap it per workspace and run it through the Batch API.
 
-| Month | Driver | Expected monthly |
+### Product LLM spend across the three months
+
+| Month | Driver | **Expected ₹** |
 |---|---|--:|
-| M1–M2 | Development and evaluation runs | $200–$400 |
-| M3–M4 | Pilot usage + evals | $600–$800 |
-| M5–M6 | GA ramp + research agent development | $1,500–$2,000 |
-| M7–M9 | Paying customers growing | $2,500–$3,500 |
-| **6-month total** | | **$5.5k** (low $3.3k, high $8.8k) |
-| **9-month total** | | **$14.5k** (low $8.7k, high $23.2k) |
+| M1 · Oct | Development and evaluation runs, mostly Sonnet | **₹6,000** |
+| M2 · Nov | Heavier evals, first internal end-to-end runs | **₹9,000** |
+| M3 · Dec | Pilot traffic on Opus | **₹23,000** |
+| **Expected total** | | **₹38,000** |
+| **Low** | Haiku-first, 2-workspace pilot | **₹15,000** |
+| **High** | Opus everywhere, more pilots, higher regeneration | **₹75,000** |
 
-After GA, LLM spend is best tracked as cost of goods sold against revenue rather than as build budget.
+## Data, intent, outreach and CRM vendors
 
-## Tooling
+### Who pays
 
-| Tool | Purpose | Indicative price | Seats |
+SellEasy stores **per-workspace vendor credentials** ([Integrations](/docs/product/features/integrations)), so pilot customers connect their own accounts. That is the central assumption of this line.
+
+| Model | SellEasy pays | Customer pays | Applies to |
 |---|---|---|---|
-| GitHub Team (or Enterprise later) | Code, CI minutes, Dependabot | $4–$21 per user/mo | Engineers |
-| Linear (or Jira) | Planning | $8–$14 per user/mo | All |
-| Slack | Communication, partner channels | $8–$15 per user/mo | All |
-| Google Workspace | Email, docs | $7–$22 per user/mo | All |
-| Notion (or Confluence) | Specs, runbooks | $10–$20 per user/mo | All |
-| Figma | Design | $16–$55 per editor/mo | Designer, PM, frontend |
-| 1Password (or similar) | Secrets for people | $8 per user/mo | All |
-| AI coding assistants | Developer productivity | $20–$200 per user/mo | Engineers |
-| Sentry | Error tracking | ~$26–$80/mo at these volumes | Team |
-| Datadog (optional; CloudWatch alternative) | APM, logs, metrics | $0–$1,500/mo depending on hosts and logs | Team |
-| PostHog (or Amplitude) | Product analytics for MVP metrics | Free tier → ~$0–$450/mo | Team |
-| Vercel Pro | Web previews and demo | $20 per member/mo | 2–4 |
-| Postman, Playwright, k6 | API testing, E2E, load tests | Mostly free tiers | Engineers, QA |
+| **Bring your own key** (the default) | Development and sandbox tiers only | Their own vendor subscriptions | Enrichment, TAM, intent, outreach, LinkedIn |
+| **OAuth app** | A developer account, normally free | Their CRM licences | HubSpot |
+| **Platform-owned** | Full usage as cost of goods sold | Included in the plan | Anthropic Claude, AWS SES |
 
-**Budget rule of thumb:** about **$250 per FTE per month** (expected), covering per-seat tools and shared services — **$12.2k over 6 months, $19.4k over 9 months** for the recommended team (low ×0.8, high ×1.3).
+<Callout type="warn" title="The assumption to challenge first">
+This budget assumes **pilot customers bring their own vendor keys**, so SellEasy pays only for dev and sandbox tiers during these three months. If a pilot customer will not — or cannot — bring a key and expects SellEasy to supply enrichment or intent data, this ₹75,000 line can become **₹2L–₹5L+ in a single quarter**, and an enterprise intent contract (Bombora and similar) runs to tens of lakhs a year. Settle this in writing **before** the pilot starts.
+</Callout>
 
-## Security and compliance (one-off and annual)
+### Indicative ranges
 
-| Item | When | Indicative cost | Budgeted (expected) |
+All **verify with vendor**. Quoted as public entry-tier pricing where it exists, converted at ₹88.
+
+| Category | Vendor | Pricing model | Indicative range / month | SellEasy's need in these 3 months | **Budgeted ₹ / month** |
+|---|---|---|---|---|--:|
+| Enrichment | **Clearbit** (HubSpot Breeze Intelligence) | Credit packs, bundled with HubSpot tiers | $45 – $150+ (₹3,960 – ₹13,200) — **verify** | One sandbox account | **₹4,400** |
+| Enrichment | **FullEnrich** | Credits | $30 – $100 (₹2,640 – ₹8,800) — **verify** | Test credits | **₹0** (alternative to the above) |
+| TAM & contacts | **Apollo.io** | Per seat; API on higher tiers | $50 – $150 per user (₹4,400 – ₹13,200); API-enabled plans often need several seats — **verify** | One API-enabled seat | **₹8,800** |
+| Intent | **RB2B** | Free tier + paid tiers | $0 – $150 (₹0 – ₹13,200) — **verify** | Test site + API access | **₹8,800** (from M2) |
+| Intent | **Trigify.io** | Subscription | $100 – $500 (₹8,800 – ₹44,000) — **verify** | Test account | **₹8,800** (from M2) |
+| Intent | **Bombora** | Annual data agreement | Enterprise, commonly tens of thousands of USD per year — **quote-based, verify** | **Not in the expected case** | **₹0** (high case only) |
+| Email sending | **AWS SES** | $0.10 per 1,000 emails | See [Infrastructure cost](/docs/team-and-cost/infrastructure-cost) | Platform-owned | *(in infra)* |
+| Email infra | **Mailpool** | Per inbox + domains | A few USD per inbox — **verify** | 6–10 warm-up inboxes | **₹5,300** (from M2) |
+| Outreach | **Instantly.ai** | Tiered subscription | $40 – $400 (₹3,520 – ₹35,200) — **verify** | API-enabled tier | **₹5,300** (from M2) |
+| LinkedIn | **HeyReach** | Per sender seat | ~$80 per sender (₹7,040); agency bundles higher — **verify** | 1 test sender | **₹7,000** (M3 only) |
+| CRM | **HubSpot** | Free developer / test accounts | $0 to develop; marketplace listing requirements apply | Developer account | **₹0** |
+
+### Vendor spend across the three months
+
+| Month | Active plans | **Expected ₹** |
+|---|---|--:|
+| M1 · Oct | One enrichment sandbox + Apollo API seat | **₹13,900** |
+| M2 · Nov | + RB2B, Trigify, Instantly, warm-up inboxes | **₹27,300** |
+| M3 · Dec | + HeyReach sender; pilot support credits | **₹33,800** |
+| **Expected total** | | **₹75,000** |
+| **Low** | One enrichment sandbox only; everything else deferred to January | **₹30,000** |
+| **High** | Paid tiers everywhere, partner/API access fees, SellEasy funding pilot credits | **₹1,80,000** |
+
+The high case does **not** include a Bombora agreement. If one is signed, add ₹2L–₹5L per month and re-do the budget.
+
+## Team tooling
+
+Budgeted under **"Tooling & one-offs"** alongside laptops and recruitment in [People cost](/docs/team-and-cost/people-cost#employer-side-extras-outside-ctc).
+
+| Tool | Purpose | Plan assumed | **₹ / month** |
 |---|---|---|--:|
-| External penetration test | Month 4 (before MVP launch) | $8k–$25k — **verify** | $8k |
-| Penetration retest | Month 6 (before GA) | $3k–$8k — **verify** | $4k |
-| Compliance automation platform (Vanta, Drata or similar) | Month 7 | $10k–$25k per year — **verify** | $15k |
-| Policies, legal review, DPA templates | Month 8 | $5k–$15k | $10k |
-| SOC 2 Type I auditor (deposit / engagement) | Month 9 | $10k–$30k — **verify** | $15k |
-| **Total** | | | **$12k (6 months) · $52k (9 months)** |
+| **GitHub Team** | Code, PRs, Actions, Dependabot | 3 seats at $4 + ~$10 of Actions minutes beyond the free tier | **₹1,936** |
+| **Sentry** | Error tracking | Team tier — the free Developer tier may be enough, in which case save this | **₹2,288** |
+| **Linear** | Planning | 3 seats at $8; the free tier covers a team this size | **₹2,112** |
+| **Figma Professional** | Design handoff and diagrams | 1 editor at $16; viewers are free | **₹1,408** |
+| **Google Workspace** | Team email and docs | 4 mailboxes, Business Starter | **₹840** |
+| **Warm-up mailboxes** | Deliverability testing across 2–3 secondary domains | 6 mailboxes | **₹1,260** |
+| **Password manager** | Shared credentials | 3 seats | **₹1,056** |
+| **Slack, Notion** | Communication, notes | Free tiers | **₹0** |
+| **Datadog** | APM | **Not used** — CloudWatch is in the infrastructure budget | **₹0** |
+| **GST and misc buffer** | | | **₹750** |
+| **Total** | | | **₹11,650** |
 
-Low and high apply ×0.6 and ×1.7.
+Plus a **one-off ₹5,000** in month 1 for 3 domains (the primary plus two warm-up domains, first year).
+
+| Case | 3-month tooling | Basis |
+|---|--:|---|
+| **Low** | **₹18,000** | Free tiers for Sentry, Linear and Figma; 2 domains |
+| **Expected** | **₹40,000** | ₹11,650 × 3 + ₹5,000 of domains |
+| **High** | **₹75,000** | Paid tiers everywhere, more warm-up domains and mailboxes, a Datadog trial |
+
+## Combined monthly view
+
+Expected case, the **Vendors & AI** bucket as it appears in [Total budget](/docs/team-and-cost/total-budget).
+
+| Month | AI dev tooling | Product LLM | Vendors | **Vendors & AI total** | *Tooling (separate bucket)* |
+|---|--:|--:|--:|--:|--:|
+| M1 · Oct | ₹30,700 | ₹6,000 | ₹13,900 | **₹50,600** | *₹16,700* |
+| M2 · Nov | ₹30,700 | ₹9,000 | ₹27,300 | **₹67,000** | *₹11,650* |
+| M3 · Dec | ₹30,700 | ₹23,000 | ₹33,800 | **₹87,500** | *₹11,650* |
+| **Total** | **₹92,100** | **₹38,000** | **₹75,000** | **₹2,05,100** | ***₹40,000*** |
 
 ## Related
 
-- [Integrations landscape](/docs/architecture/integrations-landscape)
+- [Integrations landscape](/docs/architecture/integrations-landscape) — which vendors the adapters target
+- [Team plan → AI assistance](/docs/team-and-cost/team-plan#how-ai-assistance-changes-throughput) — the throughput assumption these seats buy
 - [Total budget](/docs/team-and-cost/total-budget)
-- [Assumptions](/docs/team-and-cost/assumptions)
+- [Assumptions](/docs/team-and-cost/assumptions#vendors-ai-usage-and-tooling)

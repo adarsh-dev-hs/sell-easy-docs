@@ -1,0 +1,180 @@
+---
+title: Month 1 · Foundation
+description: 5 October to 2 November 2026 — Postgres, AWS hosting, CI/CD, observability, auth hardening and the first three real adapters (Claude, enrichment, SES).
+icon: Layers
+---
+
+**Dates:** Monday 5 October – Monday 2 November 2026 (weeks 1–4, gate on 2 November).
+**Team:** SSE + SE-1 + SE-2. Founder as PM.
+
+## Objective
+
+> Run the product we already have, for real. By 2 November, production is on AWS with PostgreSQL, deployed by CI, monitored, backed up, and a real Claude-drafted email reaches a real inbox through SES from a domain that has started warming.
+
+No new product features are built this month. Every ticket replaces a mock, a JSON file or a manual step.
+
+<Callout type="warn" title="Start the calendar-bound things in week 1">
+Three items cannot be compressed by working harder and must be started on day one: **AWS SES production access**, **vendor contracts and API keys**, and **domain + mailbox warm-up** (2–4 weeks of real time before it can carry pilot volume). They are week-1 tasks even though most of the week-1 engineering is elsewhere. See [Dependencies & risks](/docs/roadmap/dependencies-and-risks#vendor-and-contract-lead-times).
+</Callout>
+
+## Scope by epic
+
+| Epic | Owner | Weeks | Replaces | Reference |
+|---|---|---|---|---|
+| **E1 · PostgreSQL driver and migrations** | SSE | W1–W3 | JSON-file repository | [Tech debt #1](/docs/engineering/tech-debt), [Data layer](/docs/engineering/backend/data-layer) |
+| **E2 · AWS staging and production, IaC** | SSE | W1–W4 | Local processes | [Deployment](/docs/engineering/deployment), [Target architecture](/docs/architecture/target-architecture) |
+| **E3 · CI/CD, secrets, backups** | SSE | W2–W4 | Manual runs, no backups | [Deployment](/docs/engineering/deployment), [Testing](/docs/engineering/testing) |
+| **E4 · Observability and alerting** | SSE | W3–W4 | Console logs | [Tech debt #25](/docs/engineering/tech-debt) |
+| **E5 · Claude drafting adapter** | SE-1 | W2–W3 | Template mock | [Events & providers](/docs/engineering/backend/events-and-providers), [Orchestration agent](/docs/engineering/backend/orchestration-agent) |
+| **E6 · Enrichment vendor adapter** | SE-1 | W3–W4 | Hard-coded technology mock | [Integrations landscape](/docs/architecture/integrations-landscape) |
+| **E7 · SES sending and invite emails** | SE-1 + SE-2 | W3–W4 | Logged-only email, copyable invite link | [Tech debt #2, #4](/docs/engineering/tech-debt) |
+| **E8 · Auth and security hardening** | SE-2 | W2–W4 | Non-expiring invites, unsigned webhooks, one enforced scope | [Auth & security](/docs/engineering/backend/auth-and-security) |
+| **E9 · Integration settings UI made real** | SE-2 | W3–W4 | Mock connect / test buttons | [Integrations API](/docs/engineering/api/integrations) |
+| **E10 · Domain, mailbox and vendor setup** | SSE + founder | W1–W4 | — | [Dependencies & risks](/docs/roadmap/dependencies-and-risks) |
+
+### E1 · PostgreSQL driver and migrations — SSE
+
+The single highest-risk item in the plan, so it goes first and to the most senior engineer.
+
+- Implement `createPostgresRepository` behind the existing `Repository` interface, following the translation table in [Data layer](/docs/engineering/backend/data-layer#implementing-the-postgres-driver). Start with a `jsonb` document table per collection, so the shape of the code stays close to the JSON driver.
+- Add a transaction API so the delete and merge cascades are atomic.
+- Add the indexes that matter: unique on `lower(email)` for users, unique on `hash` for API keys, plus org-scoped indexes on the hot collections (accounts, contacts, signals, activities).
+- Write the JSON → Postgres data-move script and run it against the demo dataset.
+- Run the **whole existing API test suite against Postgres in CI** — this is the acceptance test for the epic.
+
+### E2 · AWS staging and production — SSE
+
+Deliberately the boring shape: **ECS Fargate + RDS PostgreSQL + ALB**, one region, one VPC, two environments.
+
+- IaC (Terraform or CDK — decided in week 1, recorded as an ADR in [Decisions](/docs/architecture/decisions)).
+- Staging first (target: Friday 23 October), production second (target: Friday 30 October).
+- Frontend hosting decision in week 1: Vercel, or CloudFront + S3.
+- RDS Multi-AZ on production, `db.t4g.medium` class — sized for pilot volumes per [Target architecture](/docs/architecture/target-architecture#scaling-path).
+- No Redis, no OpenSearch, no queues. Those are [post-launch](/docs/roadmap/beyond-the-mvp).
+
+### E3 · CI/CD, secrets and backups — SSE
+
+- GitHub Actions: lint, typecheck, test against Postgres, build images, deploy to staging on merge, deploy to production on a tag.
+- AWS Secrets Manager for every credential; nothing in env files in production; per-org vendor credentials (`apiKeyEncrypted`) actually decrypted and used.
+- Automated RDS snapshots plus point-in-time recovery, and a **rehearsed restore** before the gate — restore into a scratch instance and time it.
+
+### E4 · Observability and alerting — SSE
+
+Minimum viable, not a platform: Sentry for errors, structured JSON logs shipped to CloudWatch, and about a dozen metrics that matter (request rate and p95 by route, agent runs, drafts generated, emails sent, bounces, job failures). Alerts on: error rate spike, p95 regression, failed deploys, failed jobs, RDS storage and CPU.
+
+### E5 · Claude drafting adapter — SE-1
+
+- Replace the template mock with the Anthropic API behind the existing `LLMProvider` interface. Model choice and fallbacks recorded in [Configuration](/docs/engineering/configuration).
+- Per-org credentials supported, with a platform key as the default.
+- Token budgets, timeouts and a cost ceiling per org per day.
+- A small **eval set** — 20 to 30 real account/signal combinations with expected qualities — run in CI so prompt changes are not a leap of faith.
+- Reply suggestions use the same adapter.
+
+### E6 · Enrichment vendor adapter — SE-1
+
+One vendor only — **Clearbit or Apollo, decided in week 2** so contracting starts immediately. Real firmographics, technologies and email verification behind the existing interface, with recorded fixtures for tests and a clear "not found" path. The waterfall across multiple vendors is deferred.
+
+### E7 · SES sending and invite emails — SE-1 + SE-2
+
+- Real `EmailProvider` on SES: send, bounce and complaint handling through SNS, suppression list honoured.
+- Invite emails actually sent (`<web origin>/login?invite=<token>`), the token no longer returned outside development, and `inviteExpiresAt` enforced — [Tech debt #4](/docs/engineering/tech-debt).
+- Conservative daily limits from day one; the warm-up schedule is tracked as an operational task, not a feature.
+
+### E8 · Auth and security hardening — SE-2
+
+Session policy and refresh, invite expiry, webhook signature verification on the signals endpoint ([Signals & webhooks](/docs/engineering/api/signals-and-webhooks)), API key scopes enforced beyond `signals:write`, encryption key handling, and `ENABLE_SIMULATION=false` in production ([Tech debt #5, #10, #11, #21](/docs/engineering/tech-debt)).
+
+### E9 · Integration settings UI made real — SE-2
+
+The connect / test / disconnect flows in the settings UI stop being theatre: a real credential test per provider, real connection state, and honest error messages when a vendor rejects a key.
+
+### E10 · Domain, mailbox and vendor setup — SSE + founder
+
+Not code, but on the critical path: AWS organisation and SES production-access request (week 1), Anthropic organisation and spend limits (week 1), enrichment vendor contract (weeks 2–3), sending domain registered with SPF / DKIM / DMARC and **warm-up started by 16 October**, intent-vendor conversations opened for Month 2, and three design partners signed with written success criteria.
+
+## Week by week
+
+| Week | Dates | SSE | SE-1 | SE-2 |
+|---|---|---|---|---|
+| **W1** | 5–9 Oct | Repo setup, ADRs (IaC tool, hosting), Postgres schema and driver skeleton; AWS org, SES production request | Provider factory refactor so adapters take `orgId`; Anthropic account, spike on the drafting prompt | Auth hardening plan; invite expiry; frontend env and build pipeline for a deployed backend |
+| **W2** | 12–16 Oct | Postgres driver — accounts, contacts, signals, activities; transactions; staging VPC and RDS | Claude adapter behind `LLMProvider`; eval harness | Webhook signature verification; API key scopes; session policy |
+| **W3** | 19–23 Oct | Remaining collections; data-move script; **staging live (23 Oct)**; CI running tests on Postgres | Enrichment adapter; SES send path | Integration settings UI wired to real connect/test; invite email UI |
+| **W4** | 26–30 Oct | Production environment; secrets; backups + **rehearsed restore**; Sentry, metrics, alerts | Bounce and complaint handling; adapter fixtures and tests | Invite emails end to end; onboarding smoke test; mock-mode parity check |
+| **Gate** | Mon 2 Nov | **G1 · Production gate** — go/no-go into Month 2 | | |
+
+## Where AI assistance helps most this month
+
+| Task | How AI assistance is used | Realistic saving |
+|---|---|---|
+| Postgres driver | Generate the driver method-by-method from the `Repository` interface and the JSON driver as the reference implementation, then hand-review every query | Days, not weeks — but review is the bottleneck and stays human |
+| Migrations and indexes | Generate DDL and the JSON → Postgres move script from the type definitions | High — this is exactly the mechanical work AI is good at |
+| Terraform / CDK modules | Generate the ECS + RDS + ALB stack from a described target, then trim | Medium — generated IaC needs real scrutiny on IAM and networking |
+| Vendor adapters (Claude, SES, enrichment) | Generate adapters from vendor API docs plus the existing interface; generate recorded fixtures | High |
+| Tests | Generate the Postgres-backed test variants and adapter tests from the existing suite | High |
+| Docs and runbooks | Keep [Deployment](/docs/engineering/deployment) and [Configuration](/docs/engineering/configuration) accurate as the infra lands | High |
+
+It does **not** help with: the SES production-access review, vendor contract negotiation, the warm-up calendar, or deciding which enrichment vendor to buy.
+
+## Deliverables
+
+<Cards>
+  <Card title="Postgres in production" description="Driver, migrations, transactions, indexes, data-move script, full test suite green on Postgres." />
+  <Card title="AWS staging + production" description="ECS Fargate, RDS Multi-AZ, ALB, IaC in the repo, two environments." />
+  <Card title="CI/CD and secrets" description="Automated deploys, Secrets Manager, per-org credentials decrypted and used." />
+  <Card title="Backups with a rehearsed restore" description="Automated snapshots, PITR, and a timed restore drill on record." />
+  <Card title="Observability" description="Sentry, structured logs, core metrics, alerts on errors, latency and job failures." />
+  <Card title="Three real adapters" description="Anthropic Claude drafting, one enrichment vendor, AWS SES sending." />
+  <Card title="Hardened auth" description="Invite expiry and emails, webhook signatures, API key scopes, simulation off in production." />
+  <Card title="Warm-up under way" description="Sending domain with SPF/DKIM/DMARC, mailboxes warming since mid-October." />
+</Cards>
+
+## Exit criteria (G1 · Production gate, 2 November)
+
+A gate is passed only if every line is demonstrably true:
+
+- [ ] Production runs on **PostgreSQL** with `DB_DRIVER=postgres`; the JSON driver is used only for local development and the browser mock ([Mock mode](/docs/engineering/frontend/mock-mode)).
+- [ ] The full API test suite passes against Postgres in CI, and CI deploys staging automatically.
+- [ ] Staging and production are both reachable, on IaC that lives in the repo.
+- [ ] A backup restore has been rehearsed end to end and timed at **≤ 1 hour**.
+- [ ] Sentry receives errors from production; alerts have fired at least once in a drill.
+- [ ] A signal ingested in production produces a **Claude-generated draft**, which an approver sends, which arrives in a real external inbox **via SES**, and shows as sent in the activity timeline.
+- [ ] Enrichment returns real firmographics for at least 100 test accounts.
+- [ ] Invite emails are delivered and expire; invite tokens are no longer returned by the API outside development.
+- [ ] `ENABLE_SIMULATION=false` in production; **no mock-provider warnings** in the production log for LLM, email or enrichment.
+- [ ] Domain and mailboxes have been warming for at least two weeks.
+- [ ] Three design partners have signed written success criteria and have a kickoff date in Month 2.
+
+## KPIs
+
+| KPI | Target |
+|---|---|
+| Deploys to staging per week | ≥ 5 |
+| Backup restore time (rehearsed) | ≤ 1 h |
+| Mock-provider warnings in production logs | 0 for LLM, email, enrichment |
+| Test suite runtime in CI | ≤ 10 min |
+| Claude draft latency p95 | ≤ 15 s |
+| Enrichment match rate on test accounts | ≥ 70% |
+| Design partners signed | 3 |
+
+## Risks specific to Month 1
+
+| Risk | Likelihood | Impact | Mitigation | Owner |
+|---|---|---|---|---|
+| Postgres driver takes longer than three weeks (cascades, transactions, aggregate queries) | M | **H** | Most senior engineer, first epic, `jsonb`-per-collection shape to stay close to the JSON driver; if it slips past 30 Oct, cut E6 (enrichment) into Month 2 | SSE |
+| SES production access denied or delayed | M | **H** | Request in week 1 with a real use-case description; fall back to a transactional provider for invites while the review runs | SSE |
+| Warm-up started too late to carry pilot volume in Month 2 | M | **H** | Domain live and warming by 16 Oct; keep Month 2 volumes deliberately tiny | SSE |
+| Enrichment vendor contracting drags | M | M | Decide in week 2; build against recorded fixtures so the adapter is done before the key arrives | Founder |
+| AWS work expands (the SSE is also the only infra person) | **H** | M | One region, no queues, no cache, no search; explicitly the boring architecture | SSE |
+| Claude output quality is worse than the templated mock on some playbooks | M | M | Eval set in CI from week 2; approval is on by default so nothing auto-sends | SE-1 |
+| Only two of three engineers are available on day one | M | **H** | Whole plan shifts; see [Dependencies & risks](/docs/roadmap/dependencies-and-risks#risk-register) | Founder |
+
+## Cut first if the month is slipping
+
+In this order: **E9** (integration settings UI stays partly manual) → **E6** (enrichment moves to Month 2) → **E4** trimmed to Sentry plus two alerts. **E1, E2, E3 and E7 are not cuttable** — they are the definition of the gate.
+
+## Related
+
+- [Timeline](/docs/roadmap/timeline) · [Dependencies & risks](/docs/roadmap/dependencies-and-risks)
+- [Month 2 · Real integrations](/docs/roadmap/month-2-integrations)
+- [Engineering → Tech debt](/docs/engineering/tech-debt) · [Deployment](/docs/engineering/deployment) · [Data layer](/docs/engineering/backend/data-layer) · [Events & providers](/docs/engineering/backend/events-and-providers) · [Auth & security](/docs/engineering/backend/auth-and-security)
+- [MVP scope → In scope](/docs/mvp-scope/in-scope)

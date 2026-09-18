@@ -1,0 +1,174 @@
+---
+title: Month 3 · Harden & launch
+description: 1 to 31 December 2026 — deliverability, adapter resilience, performance, security review, onboarding, billing-lite and bug burn-down, ending in the MVP launch on 31 December.
+icon: Rocket
+---
+
+**Dates:** Tuesday 1 December – Thursday 31 December 2026 (weeks 9–13).
+**Feature freeze:** Friday 18 December. **Launch:** Thursday 31 December 2026.
+**Team:** SSE + SE-1 + SE-2. Founder as PM and launch owner.
+
+## Objective
+
+> Take a product that works for two or three friendly partners and make it dependable, defensible and sellable to customers who are not in the room. Nothing new gets built after 18 December.
+
+<Callout type="warn" title="December is not four working weeks">
+Holidays cut real capacity. Plan on roughly **three and a half working weeks**: weeks 9–11 are full, week 12 (21–24 Dec) is a short holiday week, and week 13 (28–31 Dec) is a launch week, not a build week. The freeze on 18 December exists precisely because of this.
+</Callout>
+
+## Scope by epic
+
+| Epic | Owner | Weeks | Reference |
+|---|---|---|---|
+| **E18 · Deliverability controls** | SE-1 | W9–W10 | [Tech debt #14](/docs/engineering/tech-debt) |
+| **E19 · Adapter resilience: rate limits, retries, idempotency** | SSE + SE-1 | W9–W10 | [Events & providers](/docs/engineering/backend/events-and-providers) |
+| **E20 · Performance pass** | SSE | W10–W11 | [Tech debt #12, #22](/docs/engineering/tech-debt) |
+| **E21 · Security review and hardening** | SSE | W10–W11 | [Auth & security](/docs/engineering/backend/auth-and-security), [MVP launch checklist](/docs/mvp-scope/launch-checklist) |
+| **E22 · Onboarding and in-product guidance** | SE-2 | W9–W11 | [Frontend → Adding a page](/docs/engineering/frontend/adding-a-page) |
+| **E23 · Customer-facing documentation** | SE-2 | W9–W11 | [Product → Feature guide](/docs/product/features) |
+| **E24 · Billing-lite** | SE-2 | W10–W11 | [Organization & team API](/docs/engineering/api/organization-and-team) |
+| **E25 · Bug burn-down** | All three | W9–W13 | Pilot triage list |
+| **E26 · Launch readiness** | SSE + founder | W11–W13 | [MVP launch checklist](/docs/mvp-scope/launch-checklist) |
+
+### E18 · Deliverability controls — SE-1
+
+The thing most likely to make the product look broken to a customer who did nothing wrong:
+
+- SPF / DKIM / DMARC verification surfaced per sending domain, with a clear fix-it state when records are missing.
+- Per-mailbox and per-workspace daily caps enforced in the scheduler, with headroom against the warm-up curve.
+- Automatic pause when bounce rate crosses a threshold, complaint handling, and a global suppression list.
+- A deliverability panel that shows the real numbers rather than frontend-derived guesses.
+
+**Not in scope:** warm-up networks, Instantly / Mailpool, inbox-placement testing — all [post-launch](/docs/roadmap/beyond-the-mvp).
+
+### E19 · Adapter resilience — SSE + SE-1
+
+Every real adapter gets the same treatment: a token-bucket rate limiter tuned to the vendor's published limits, exponential backoff with jitter on 429 and 5xx, a circuit breaker that degrades gracefully instead of failing a user action, **idempotency keys so a retry never sends a duplicate email or creates a duplicate HubSpot deal**, and a timeout budget so no vendor can hang a request. Vendor failures become visible state in the integrations UI rather than a silent nothing.
+
+Duplicate-send prevention is the highest-value item here: it is the failure mode a customer never forgives.
+
+### E20 · Performance pass — SSE
+
+Analytics and the dashboard are computed on every request today ([Tech debt #12](/docs/engineering/tech-debt)). Rather than adding Redis, this month: profile the top routes, add the missing Postgres indexes, replace the remaining in-memory scans with SQL aggregates, paginate the large list endpoints properly, and add Postgres trigram indexes for search instead of the substring scan ([Tech debt #22](/docs/engineering/tech-debt)). Targets are p95 ≤ 500 ms on the top 10 API routes and ≤ 2 s on the dashboard.
+
+If the targets are met without a cache, Redis stays deferred — which is the expectation at pilot volumes.
+
+### E21 · Security review and hardening — SSE
+
+Given three people and no budget line for a full external penetration test, the realistic shape is:
+
+- A structured internal review against the OWASP Top 10, with AI assistance used to sweep the codebase for the mechanical classes (injection, missing authorisation on routes, IDOR on org-scoped resources, secrets in logs, unsafe deserialisation) — then a human pass over every finding.
+- Dependency and container scanning wired into CI.
+- Authorisation matrix tested: every route, every role, cross-organisation access explicitly denied.
+- Secrets audit, least-privilege IAM review, encryption at rest and in transit confirmed.
+- A **security overview document and a DPA** written for the sales conversation, in place of a SOC 2 report.
+- An external penetration test **booked for Q1 2027**, not run before launch — budget and lead time do not allow it, and this is stated honestly to customers rather than hidden.
+
+### E22 · Onboarding and in-product guidance — SE-2
+
+The first hour has to work without a founder on the call: a guided setup checklist (connect CRM, connect mailbox, define the ICP, create a playbook, import accounts), sensible defaults, empty states that explain what to do, and an obvious path from "signed up" to "first draft approved".
+
+### E23 · Customer-facing documentation — SE-2
+
+A short getting-started guide, one page per major feature, an integration setup guide per vendor (HubSpot, the intent vendor, mailboxes), and a troubleshooting page. AI assistance drafts most of this from the existing [Feature guide](/docs/product/features) and the code itself; the engineer edits for truth.
+
+### E24 · Billing-lite — SE-2
+
+Not a billing system. Seat limits and plans already exist in the product. This adds: a plan and seat-usage view, an entitlement check that actually blocks over-seat invites, a usage export (emails sent, drafts generated, signals ingested) that an invoice can be built from, and **manual invoicing by the founder**. A real billing provider is [post-launch](/docs/roadmap/beyond-the-mvp).
+
+### E25 · Bug burn-down — all three
+
+Roughly **20% of the month's capacity is reserved** for pilot-driven bugs, rising to nearly all of it in weeks 12–13. Triage daily, fix P0 same-day, P1 within the week, and defer everything else to the post-launch backlog with a written reason.
+
+### E26 · Launch readiness — SSE + founder
+
+Work the [MVP launch checklist](/docs/mvp-scope/launch-checklist) gate by gate. Plus: a runbook per failure mode (SES suppression, HubSpot outage, LLM outage, scheduler stall), an on-call rota across three people that is honest about what three people can cover, a status and incident-comms plan, a rollback plan and a rehearsed rollback, and a launch-day monitoring watch.
+
+## Week by week
+
+| Week | Dates | SSE | SE-1 | SE-2 |
+|---|---|---|---|---|
+| **W9** | 1–4 Dec | Adapter rate limits, retries, idempotency keys | Deliverability: DNS checks, caps, auto-pause | Onboarding checklist; empty states |
+| **W10** | 7–11 Dec | Performance profiling; indexes; SQL aggregates | Suppression, complaint handling, deliverability panel | Customer docs; billing-lite views and entitlement checks |
+| **W11** | 14–18 Dec | Security review; dependency and container scanning; authorisation matrix tests | Security findings; adapter failure states in the UI | Docs finished; usage export; **feature freeze Fri 18 Dec** |
+| **W12** | 21–24 Dec | Bug burn-down; runbooks; rollback rehearsal | Bug burn-down; vendor failure drills | Bug burn-down; onboarding polish |
+| **W13** | 28–31 Dec | Launch checklist sign-off; on-call rota; launch-day watch | Final deliverability check; partner sanity pass | Docs and pricing page final; launch comms | 
+| **Launch** | Thu 31 Dec | **MVP launch / GA** | | |
+
+## Where AI assistance helps most this month
+
+| Task | How AI assistance is used | Realistic saving |
+|---|---|---|
+| Customer documentation | Draft every page from the code and the existing engineering docs, then edit for truth | **Very high** — this is the largest saving in the month |
+| Security sweep | Systematic pass over routes and handlers for missing authorisation, IDOR, injection and secret leakage | High for the mechanical classes; design-level findings still need a human |
+| Authorisation matrix tests | Generate the full route × role test matrix from the route definitions | Very high — this is tedious and exactly what AI is good at |
+| Retry / rate-limit / idempotency wrappers | Generate one consistent wrapper and apply it across all adapters | High |
+| Performance | Generate candidate indexes and SQL rewrites from `EXPLAIN` output, then measure | Medium — the measurement is the real work |
+| Runbooks | Draft one runbook per failure mode from the architecture and alert definitions | High |
+
+It does **not** help with: the penetration test that is not being run, whether the security posture is *good enough* to sell, the launch go/no-go decision, or the customer conversations that follow it.
+
+## Deliverables
+
+<Cards>
+  <Card title="Deliverability controls" description="DNS verification, daily caps, auto-pause on bounces, suppression list, honest deliverability panel." />
+  <Card title="Resilient adapters" description="Rate limits, backoff, circuit breakers, timeouts and idempotency keys on every vendor call." />
+  <Card title="Performance targets met" description="p95 ≤ 500 ms on top routes, ≤ 2 s dashboard, trigram search — with no cache tier added." />
+  <Card title="Security review complete" description="OWASP pass, authorisation matrix tests, CI scanning, security overview and DPA; pen test booked for Q1 2027." />
+  <Card title="Self-serve onboarding" description="Guided setup, defaults and empty states that get a new workspace to a first approved draft." />
+  <Card title="Customer documentation" description="Getting started, feature pages, integration setup guides, troubleshooting." />
+  <Card title="Billing-lite" description="Plan and seat views, entitlement enforcement, usage export, manual invoicing." />
+  <Card title="Launch readiness" description="Checklist signed off, runbooks, on-call rota, rehearsed rollback, launch-day watch." />
+</Cards>
+
+## Exit criteria (G3 · Launch gate, 31 December)
+
+- [ ] Every **(gate)** item in the [MVP launch checklist](/docs/mvp-scope/launch-checklist) is signed off.
+- [ ] Every MVP **Must-have** in [In scope](/docs/mvp-scope/in-scope) is live in production.
+- [ ] **Zero open P0 bugs and zero open P1 bugs** at the 18 December freeze, and none opened since that are unfixed.
+- [ ] API p95 ≤ 500 ms on the top 10 routes; dashboard p95 ≤ 2 s, measured on pilot-sized data.
+- [ ] No unresolved high-severity security findings; authorisation matrix tests green in CI.
+- [ ] Every adapter is idempotent — a forced retry storm in staging produces **no duplicate emails and no duplicate HubSpot deals**.
+- [ ] Bounce rate ≤ 2% and complaint rate ≤ 0.1% across pilot sending for the prior two weeks.
+- [ ] A new workspace can be taken from signup to first approved draft **without engineering help**, demonstrated with someone outside the team.
+- [ ] Runbooks exist for each named failure mode; a rollback has been rehearsed in production.
+- [ ] At least one design partner is willing to be referenced, and pricing is agreed.
+
+## KPIs
+
+| KPI | Target |
+|---|---|
+| Open P0 / P1 bugs at feature freeze | 0 / 0 |
+| API p95 on the top 10 routes | ≤ 500 ms |
+| Dashboard p95 | ≤ 2 s |
+| Duplicate sends under retry-storm test | 0 |
+| Bounce rate / complaint rate | ≤ 2% / ≤ 0.1% |
+| Draft approval rate across pilots | ≥ 60% |
+| Unassisted signup → first approved draft | ≤ 60 min |
+| High-severity security findings open at launch | 0 |
+| Launch checklist gates signed | 100% |
+
+## Risks specific to Month 3
+
+| Risk | Likelihood | Impact | Mitigation | Owner |
+|---|---|---|---|---|
+| Holiday capacity is lower than assumed (illness, leave, 3-person team has no slack) | **H** | **H** | Freeze on 18 Dec; weeks 12–13 planned as burn-down and launch only; scope in weeks 9–11 sized to be cuttable | Founder |
+| Pilot bugs exceed the 20% reserve | M | **H** | Daily triage; cut E22/E23/E24 scope before moving the launch date | SSE |
+| Security review finds something structural (authorisation model, tenancy isolation) | L | **H** | Run the review in week 11, not week 13, so there is time to act; a structural finding is an explicit no-go trigger | SSE |
+| Deliverability still weak because warm-up started late or volumes ramped too fast | M | **H** | Caps stay conservative through launch; launch does not mean "increase volume" | SE-1 |
+| Performance targets need a cache after all | L | M | Redis is a known, scoped post-launch item; ship with tuned SQL and accept a slower dashboard if it is under 2 s | SSE |
+| Launching on 31 December means launching into a dead week | **H** | L | Accept it: the date is the engineering milestone, not the marketing moment. Commercial launch activity runs in January | Founder |
+| Pressure to add "just one more integration" before launch | **H** | M | Freeze is absolute; every request goes to [Beyond the MVP](/docs/roadmap/beyond-the-mvp) | Founder |
+
+## Cut first if the month is slipping
+
+In this order: **E24** (billing-lite drops to a usage export only, invoices built by hand) → **E23** (docs reduced to getting-started plus integration setup) → **E22** (onboarding stays partly guided by a human) → **E20** (accept slower dashboards and defer the search work). **E18, E19, E21, E25 and E26 are not cuttable** — they are what makes a launch responsible rather than reckless.
+
+If, after all those cuts, the gate still cannot be passed on 31 December, the decision is a **two-week slip to mid-January with a reduced scope**, not a launch with open P0s. That is the founder's call at the 18 December freeze, not on launch day.
+
+## Related
+
+- [Month 2 · Real integrations](/docs/roadmap/month-2-integrations) · [Beyond the MVP](/docs/roadmap/beyond-the-mvp)
+- [Timeline](/docs/roadmap/timeline) · [Dependencies & risks](/docs/roadmap/dependencies-and-risks)
+- [MVP scope → Launch checklist](/docs/mvp-scope/launch-checklist) · [Acceptance criteria](/docs/mvp-scope/acceptance-criteria) · [Success metrics](/docs/mvp-scope/success-metrics)
+- [Engineering → Tech debt](/docs/engineering/tech-debt) · [Auth & security](/docs/engineering/backend/auth-and-security) · [Testing](/docs/engineering/testing) · [Troubleshooting](/docs/engineering/troubleshooting)

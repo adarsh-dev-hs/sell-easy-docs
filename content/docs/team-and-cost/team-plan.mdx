@@ -1,132 +1,193 @@
 ---
 title: Team plan
-description: The roles needed to deliver the SellEasy roadmap, their responsibilities, FTE by month, hiring sequence and a lean alternative.
+description: What the SSE and two SEs each own across the three roadmap months, the engineer-week capacity model, how AI assistance changes throughput, and what this team cannot cover.
 icon: Users
 ---
 
-The recommended team peaks at **9.5 FTE**. It is sized for the scope in the [roadmap](/docs/roadmap): mostly integration and platform work on top of a product that is already built. Costs for each role are in [People cost](/docs/team-and-cost/people-cost).
+The team is **three engineers, all in India, for 13 weeks** (5 October – 31 December 2026). Costs are in [People cost](/docs/team-and-cost/people-cost); what they deliver is in the [roadmap](/docs/roadmap).
 
-## Roles and responsibilities
+| Role | Who | Primary ownership |
+|---|---|---|
+| **SSE** — Senior Software Engineer, tech lead | 1 person, ₹22L CTC | Data layer, AWS, CI/CD, architecture calls, code review, release, on-call |
+| **SE-1** — Software Engineer, integrations | 1 person, ₹12L CTC | Vendor adapters, webhooks, scheduling, email sending, sync logs |
+| **SE-2** — Software Engineer, product surface | 1 person, ₹12L CTC | Next.js app, onboarding, approval queue, analytics views, mock-mode parity |
 
-| Role | Seniority | Responsibilities | Key skills | Phases most needed |
-|---|---|---|---|---|
-| **Founding / lead engineer** | Staff / principal | Architecture and ADRs; code reviews; provider plumbing; event bus, HubSpot and warehouse design; SOC 2 technical controls; on-call lead | TypeScript, Node, Postgres, AWS, distributed systems, security | All |
-| **Backend engineer 1** | Senior | Postgres driver and migrations; agent workers; inbound capture; stats; cache; audit log; API scopes | TypeScript, SQL, queues, testing | All |
-| **Backend engineer 2** | Senior / mid | Auth hardening; SES; sequence scheduler; suppression; search; deliverability; SSO; billing | TypeScript, email infrastructure, identity, scheduling | 1 (from M2) → 4 |
-| **Frontend engineer** | Senior | Auth flows; onboarding; integration setup (OAuth, secrets); playbook ordering; analytics and admin UIs; keeps mock mode in sync | Next.js, React, TanStack Query, shadcn/ui, accessibility | All |
-| **Full-stack / integrations engineer** | Senior | Enrichment, RB2B, Trigify, Bombora, HubSpot, Instantly, Mailpool, HeyReach, Salesforce, Attio, Fireflies adapters; webhook framework; fixtures | REST / GraphQL APIs, OAuth, webhooks, data mapping | 1 (from M2) → 4 |
-| **ML / LLM engineer** (0.5) | Senior | Prompt design; evaluation sets; model choice per task; sentiment; research agent; call summaries; cost per task | LLM APIs (Claude), evals, retrieval, prompt caching | All |
-| **DevOps / SRE** (0.5, fractional) | Senior | AWS accounts; Terraform or CDK; CI/CD; observability; queues; autoscaling; Redshift; backups; compliance tooling | AWS, IaC, GitHub Actions, Datadog / CloudWatch | All, heaviest in 1 and 4 |
-| **QA engineer** | Mid / senior | Test plans from acceptance criteria; Playwright suite; scheduling and time-zone tests; regression; release sign-off | Playwright, API testing, test design | 2 → 4 |
-| **Product manager** | Senior | Design partners; MVP scope; acceptance criteria; instrumentation; scorecards; pricing and packaging; SOC 2 project | B2B SaaS, GTM tools, analytics | All |
-| **Product designer** (0.5) | Senior | Onboarding; approval queue; integration setup; playbook builder; analytics and admin | Product design, Figma, design systems (shadcn) | All |
-| **GTM / solutions engineer** | Mid / senior | Customer onboarding; demos (mock-mode environment); help centre; security questionnaires; enterprise pilots | Sales engineering, RevOps, HubSpot / Salesforce admin | 3 → 4 |
+The founder acts as product manager: scope, acceptance criteria, design-partner conversations and prioritisation. There is no designer, no DevOps engineer and no QA engineer — see [What this team does not cover](#what-this-team-does-not-cover).
 
-Not in the core team but budgeted elsewhere: **penetration testers** and **SOC 2 auditors** (in [Total budget](/docs/team-and-cost/total-budget)), and optional **contractors** for peaks (see [People cost](/docs/team-and-cost/people-cost#contractors-vs-full-time)).
+## Responsibilities in detail
 
-## FTE by month
+<Accordions>
+<Accordion title="SSE — Senior Software Engineer (tech lead)">
 
-| Role | M1 Oct | M2 Nov | M3 Dec | M4 Jan | M5 Feb | M6 Mar | M7 Apr | M8 May | M9 Jun | FTE-months (6 / 9) |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| Lead engineer | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 6 / 9 |
-| Backend engineers | 1 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 11 / 17 |
-| Frontend engineer | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 6 / 9 |
-| Integrations engineer | 0 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 5 / 8 |
-| ML / LLM engineer | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 3 / 4.5 |
-| DevOps / SRE | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 3 / 4.5 |
-| QA engineer | 0 | 0.5 | 0.5 | 1 | 1 | 1 | 1 | 1 | 1 | 4 / 7 |
-| Product manager | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 6 / 9 |
-| Product designer | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 3 / 4.5 |
-| GTM / solutions | 0 | 0 | 0 | 0 | 1 | 1 | 1 | 1 | 1 | 2 / 5 |
-| **Total** | **5.5** | **8.0** | **8.0** | **8.5** | **9.5** | **9.5** | **9.5** | **9.5** | **9.5** | **49 / 77.5** |
+**Owns**
 
-Engineering capacity (excluding PM, design and GTM) is 4.0 FTE in month 1, 6.5 in months 2–3, 7.0 from month 4.
+- The `PostgresRepository` driver, the schema, migrations and the JSON-to-Postgres migration script
+- AWS account structure, VPC, ECS/App Runner services, RDS, Secrets Manager, KMS, CloudWatch, SES domain and DKIM setup
+- Infrastructure-as-code (Terraform or CDK), GitHub Actions pipelines, environment promotion
+- Auth hardening: token handling, rate limiting behind a proxy, encryption key management
+- Architecture decisions and the review queue — **every** pull request that touches data, security or the event flow
+- Release management, the production checklist in [Deployment](/docs/engineering/deployment), and being the escalation point during the launch window
 
-## Hiring sequence
+**Does not own:** UI work, or more than one vendor adapter. If the SSE is writing adapters, the plan is off track.
 
-```mermaid
-gantt
-  title Hiring plan (offer accepted by start date)
-  dateFormat YYYY-MM-DD
-  axisFormat %b %y
-  section Before kickoff
-  Lead engineer                   :h1, 2026-08-17, 2026-10-05
-  Backend engineer 1              :h2, 2026-08-24, 2026-10-05
-  Frontend engineer               :h3, 2026-08-24, 2026-10-05
-  Product manager                 :h4, 2026-08-17, 2026-10-05
-  DevOps fractional firm          :h5, 2026-09-14, 2026-10-05
-  ML LLM engineer part-time       :h6, 2026-08-31, 2026-10-05
-  Product designer part-time      :h7, 2026-09-07, 2026-10-05
-  section Month 2
-  Backend engineer 2              :h8, 2026-09-07, 2026-11-02
-  Integrations engineer           :h9, 2026-09-07, 2026-11-02
-  QA engineer                     :h10, 2026-09-21, 2026-11-02
-  section Month 5
-  GTM solutions engineer          :h11, 2026-12-07, 2027-02-01
-```
+**Key skills:** TypeScript, Node, PostgreSQL, AWS, IaC, security fundamentals, and enough judgement to say no to scope.
 
-Bars show the recruiting window leading to each start date. If recruiting starts later than shown, use contractors for the Postgres driver and first adapters (see [Dependencies & risks → hiring](/docs/roadmap/dependencies-and-risks#hiring-dependencies)).
+</Accordion>
+<Accordion title="SE-1 — Software Engineer, integrations">
 
-**Order of priority:** lead engineer → backend 1 → PM → frontend → DevOps (fractional) → ML/LLM → designer → backend 2 → integrations → QA → GTM.
+**Owns**
 
-## Team shape over time
+- One adapter per vendor against the interfaces in [Integrations landscape](/docs/architecture/integrations-landscape): enrichment, intent (RB2B, Trigify), CRM (HubSpot), outreach (Instantly or Mailpool), LinkedIn (HeyReach)
+- The webhook receiver framework: signature verification, idempotency, replay, dead-letter handling
+- Per-workspace credential storage and the sync-log surface behind it
+- Sequence scheduling and SES sending, including suppression and bounce handling
+- Recorded HTTP fixtures so every adapter has a test that runs without network access
+
+**Key skills:** REST and OAuth integration work, data mapping, retry and idempotency patterns, patience with badly documented vendor APIs.
+
+</Accordion>
+<Accordion title="SE-2 — Software Engineer, product surface">
+
+**Owns**
+
+- Auth and onboarding flows in the Next.js app
+- Integration setup UI: connect, enter credentials, show sync status and errors
+- The approval queue — the screen the product lives or dies on
+- Analytics and admin views against the real API
+- Keeping mock data mode in step with the backend (`npm run mock:check` in CI), because the stakeholder demo depends on it — see [Environments & data modes](/docs/architecture/environments-and-data-modes)
+- Accessibility and responsive behaviour, in the absence of a designer
+
+**Key skills:** Next.js, React, TanStack Query, shadcn/ui, and enough design sense to ship a clean screen without a Figma file.
+
+</Accordion>
+</Accordions>
+
+## Ownership by roadmap month
+
+| Roadmap month | SSE | SE-1 | SE-2 |
+|---|---|---|---|
+| **[M1 · Foundation](/docs/roadmap/month-1-foundation)** (Oct) | Postgres driver, schema, migration script; AWS accounts, VPC, RDS, ECS/App Runner; CI/CD; staging up by week 3 | Adapter interface and the first enrichment adapter; fixture harness; helps land the Postgres repository tests | Auth flows, onboarding, app shell against the real API; mock parity; first pass on the approval queue |
+| **[M2 · Integrations](/docs/roadmap/month-2-integrations)** (Nov) | Event bus and queue workers, scheduler, observability, secrets rotation, production environment; reviews (heaviest month for review load) | Intent and CRM adapters, webhook framework, SES sending and suppression, sync logs | Integration setup UI, approval queue depth, signal and account views, error states |
+| **[M3 · Launch](/docs/roadmap/month-3-launch)** (Dec) | Performance and hardening, backups and restore drill, runbooks, release; on-call through the launch window | Remaining adapters, deliverability and warm-up, end-to-end flows against sandboxes | Analytics views, polish, empty and failure states, [launch checklist](/docs/mvp-scope/launch-checklist) items |
+
+In the **final two weeks of December** all three engineers move onto test, bug-fix and launch readiness. No new feature work is planned after roughly 15 December; this is deliberate, and it is the first thing to defend when scope pressure arrives.
 
 ```mermaid
 flowchart LR
-  subgraph P1["Phase 1 · 5.5–8 FTE"]
-    a1["Platform core<br/>lead · backend 1 · DevOps"]
-    a2["First adapters<br/>ML · backend 2 · integrations"]
-    a3["Pilot<br/>PM · frontend · designer"]
+  subgraph M1["M1 · October — Foundation"]
+    a1["SSE<br/>Postgres · AWS · CI/CD"]
+    a2["SE-1<br/>Adapter interface · enrichment"]
+    a3["SE-2<br/>Auth · onboarding · shell"]
   end
-  subgraph P2["Phase 2 · 8–8.5 FTE"]
-    b1["Loop squad<br/>scheduler · inbound · agent workers"]
-    b2["Integrations squad<br/>webhooks · HubSpot"]
-    b3["Launch<br/>QA · PM"]
+  subgraph M2["M2 · November — Integrations"]
+    b1["SSE<br/>Queues · scheduler · prod"]
+    b2["SE-1<br/>Intent · CRM · webhooks · SES"]
+    b3["SE-2<br/>Setup UI · approval queue"]
   end
-  subgraph P3["Phase 3 · 9.5 FTE"]
-    c1["Scale<br/>cache · search · SLOs"]
-    c2["Intelligence<br/>research · playbooks"]
-    c3["Channels + GA<br/>deliverability · HeyReach · GTM"]
+  subgraph M3["M3 · December — Launch"]
+    c1["SSE<br/>Hardening · runbooks · release"]
+    c2["SE-1<br/>Deliverability · last adapters"]
+    c3["SE-2<br/>Analytics · polish"]
   end
-  subgraph P4["Phase 4 · 9.5 FTE"]
-    d1["Enterprise<br/>SSO · audit · SOC 2"]
-    d2["CRM<br/>Salesforce · Attio"]
-    d3["Insights + commercial<br/>Redshift · billing · Fireflies"]
-  end
-  P1 --> P2 --> P3 --> P4
+  M1 --> M2 --> M3
+  M3 --> L["Launch<br/>31 Dec 2026"]
 ```
 
-## Alternative: lean team
+## Capacity model
 
-For a tighter budget, a **lean team of about 4.75 FTE** can deliver the same scope more slowly.
+**Gross capacity:** 3 engineers × 13 weeks = **39 engineer-weeks**. Week 13 (28–31 Dec) is partial, and the last week of December is low-output in practice.
 
-| Role | Lean FTE | Notes |
-|---|:-:|---|
-| Founding / lead engineer | 1 | Also owns DevOps decisions |
-| Backend engineer | 1 | |
-| Full-stack / integrations engineer | 1 | Takes scheduler and adapters |
-| Frontend engineer | 0.5 | Contractor or part-time |
-| ML / LLM engineer | 0.25 | Advisor / contractor |
-| DevOps | 0.25 | Fractional firm, setup-heavy |
-| Product manager | 0.5 | Founder covers the rest |
-| Designer | 0.25 | Contractor |
-| QA, GTM | 0 | Engineers own tests; founders sell and onboard |
+| Deduction | Engineer-weeks | Basis |
+|---|--:|---|
+| Gross capacity | **39.0** | 3 × 13 weeks |
+| Onboarding and ramp | −1.5 | Half a week each: environment setup, codebase orientation, access |
+| Public holidays | −3.0 | Roughly 4–5 holidays in Oct–Dec including the Dussehra–Diwali cluster and Christmas — **confirm against the 2026 calendar for your state** |
+| Planned leave | −2.0 | 3 days per engineer; the festival season makes zero leave unrealistic |
+| Year-end drag (week 13) | −1.0 | Partial final week and reduced output around the holidays |
+| **Net available** | **31.5** | |
+| Non-feature overhead (15%) | −4.7 | Reviews, standups, interviews, incident response, documentation, vendor support tickets |
+| **Net feature capacity** | **≈ 26.8 → 27 engineer-weeks** | |
 
-| Lean team | Monthly people cost (expected) | 9 months of people cost |
-|---|--:|--:|
-| US-heavy | ~$87.7k | ~$789k |
-| Blended (lead + PM in US) | ~$43.2k | ~$388k |
-| India-heavy | ~$21.3k | ~$192k |
+**Read that number carefully.** Twenty-seven engineer-weeks is what the roadmap has to fit into. Each of the three roadmap months carries roughly **9 engineer-weeks** of feature work. Estimate epics in those units, not in calendar time.
 
-**Trade-offs**
+<Callout type="warn" title="The capacity model has no slack in it">
+Net feature capacity is already after overhead, but it assumes nobody is sick for a week, nobody resigns, and no vendor blocks an adapter for five days. The 12.5% [contingency](/docs/team-and-cost/total-budget#contingency) is the money answer to that; the scope answer is in [Dependencies & risks](/docs/roadmap/dependencies-and-risks).
+</Callout>
 
-- Timeline stretches to roughly **13–15 months** for the full 9-month scope: MVP launch around month 6, GA around month 9, Phase 4 largely beyond.
-- Higher key-person risk; little room for design-partner support.
-- Recommended scope cuts: drop Bombora, Attio, Fireflies and the second enrichment vendor; delay OpenSearch; keep SOC 2 to readiness only.
+## How AI assistance changes throughput
+
+AI pair programming is a load-bearing assumption in this plan, so it deserves a number rather than enthusiasm. Every engineer has a paid Claude Code seat, budgeted in [Vendor & AI cost](/docs/team-and-cost/vendor-and-ai-cost#ai-assisted-development-tooling).
+
+| Kind of work | Share of this scope | Assumed multiplier | Why |
+|---|--:|:-:|---|
+| Mechanical and repetitive — adapters against a documented API, CRUD endpoints, migrations, fixtures, unit tests, type definitions, docs | ~50% | **1.4–1.8×** | The pattern is established after the first example; the model reproduces it faster than a person types it |
+| Semi-novel — UI screens from a description, query optimisation, refactors, wiring a new queue worker | ~30% | **1.2–1.4×** | Good first drafts, meaningful review time |
+| Genuinely hard — schema and architecture design, debugging a production incident, an undocumented or flaky vendor API, security decisions, deliverability | ~20% | **1.0–1.1×** | The bottleneck is understanding the problem, not producing code |
+
+Weighted, that is roughly a **1.25–1.35× overall multiplier**: the 27 engineer-weeks of this team behave like about **34–36 conventional engineer-weeks**. That is the difference between "impossible in three months" and "tight but achievable" — it is not the difference between three engineers and nine.
+
+**What it does not do**
+
+- It does not reduce review time. It increases it. More code arrives per day and it all still needs a human owner. The 15% overhead above is set higher than a non-AI team's precisely for this.
+- It does not shorten waiting. Vendor approvals, DNS and domain warm-up, security reviews and RDS restores take the same wall-clock time.
+- It does not remove the need for someone who understands the system. The main quality risk is **code nobody on the team can explain**.
+
+**Mitigations, which are not optional**
+
+<Steps>
+<Step>
+**Every pull request has a named human owner** who can explain every line in review. "Claude wrote it" is not an answer.
+</Step>
+<Step>
+**The SSE reviews everything touching data, auth, money or the event flow**, regardless of who or what wrote it.
+</Step>
+<Step>
+**Tests are written or reviewed by a different person than the implementation** where the change is risky. AI-generated tests that assert the implementation rather than the behaviour are the common failure.
+</Step>
+<Step>
+**Architecture and schema decisions are made by humans first**, then implemented with assistance — never the other way round. Record them as decisions ([Decisions](/docs/architecture/decisions)).
+</Step>
+</Steps>
+
+## What this team does not cover
+
+| Gap | Risk | Mitigation in this plan |
+|---|---|---|
+| **No dedicated QA** | Regressions reach the pilot; no independent sign-off on acceptance criteria | Engineers write tests for their own work; cross-review of tests on risky changes; a Playwright smoke suite in CI; the last two weeks of December reserved for test and bug-fix; the founder runs acceptance against [MVP scope](/docs/mvp-scope/acceptance-criteria) |
+| **No designer** | Inconsistent, engineer-designed UI; the approval queue is the product and it will look it | Stay inside shadcn/ui defaults and existing patterns; no bespoke components; a half-day design review with the founder per month; budget a contract designer for 5–10 days if the pilot flags it |
+| **No DevOps engineer** | Single point of failure in the SSE; IaC quality risk | SSE owns infrastructure from day one and writes it as code, not console clicks; runbooks in the repo; both SEs must be able to deploy and roll back by end of month 2 |
+| **No 24×7 on-call** | Overnight outages go unnoticed during a pilot | Business-hours support only, stated to pilot customers in writing; CloudWatch alarms to Slack and a phone; the SSE is the single escalation point; accept it — do not pretend otherwise |
+| **No dedicated PM** | Scope drift, or a founder too busy to unblock the team | Founder commits to a fixed weekly slot for acceptance and decisions; scope is frozen per month; anything new goes to [Beyond the MVP](/docs/roadmap/beyond-the-mvp) |
+| **No security specialist** | Unreviewed auth and secrets handling going to a pilot | Follow the production checklist in [Deployment](/docs/engineering/deployment); use managed services (Secrets Manager, KMS, RDS encryption); budget an external review **after** this window, not inside it |
+| **Bus factor of one on infrastructure** | If the SSE is unavailable, nothing ships | Everything in IaC and in the repo; both SEs shadow one deploy each in month 2; credentials in a shared vault, never on one laptop |
+
+<Callout type="warn" title="The honest version">
+A three-person team with no QA and no design will ship a working pilot, not a polished product. Plan for visible rough edges in the UI and for at least one regression reaching a pilot customer. The alternative — staffing QA and design properly — costs more than this entire budget's contingency, and is the right call only once there are customers to protect.
+</Callout>
+
+## What a fourth hire would unlock
+
+If budget allows, a **fourth Software Engineer at ₹12L CTC** is the highest-value addition. Cost: **₹3,00,000** of salary over three months plus roughly **₹1,50,000** of laptop, AI seat and tooling — about **₹4.5L all in**, or **+23%** on the expected total.
+
+| Fourth hire | Adds | Best when |
+|---|---|---|
+| **SE-3, second integrations engineer** | ~10.5 net engineer-weeks; a parallel adapter track, so CRM and outreach do not queue behind intent; removes the biggest schedule dependency in month 2 | The pilot customers need more than three vendors connected |
+| **SE-3, frontend-weighted** | Frees SE-2 to go deep on the approval queue and analytics; noticeably better UI polish | The pilot is design-partner facing and the demo matters commercially |
+| **QA engineer (mid-level, ~₹8–10L CTC)** | Independent test design, a real regression suite, release sign-off | You expect to keep shipping after December and want a safety net from the start |
+| **Contract designer (10–15 days)** | Approval queue, onboarding and analytics screens designed properly, at roughly ₹1.5L–₹3L | Cheapest meaningful quality win; see [contractor rates](/docs/team-and-cost/people-cost#contractor-alternative) |
+
+A fourth engineer adds about **33% capacity** but not 33% output — onboarding, coordination and review load eat some of it, and the SSE's review time is already the tightest constraint. Hiring a fourth person **after** week 4 gives back less than half the capacity for most of the cost.
 
 ## Working model
 
-- Two-week sprints; phase gates as in [Dependencies & risks](/docs/roadmap/dependencies-and-risks#decision-points-and-go--no-go-gates).
-- For blended teams, keep a **daily overlap of at least 2–3 hours** between US and India time zones; the lead engineer and PM own cross-time-zone hand-offs.
-- Every epic has one owning engineer; the lead engineer reviews architecture-affecting changes.
-- On-call rotation starts at the pilot gate with the lead engineer, backend engineers and DevOps.
+- **Weekly cycles, not two-week sprints.** Thirteen weeks is too short for fortnightly planning to give useful feedback.
+- **One owner per epic.** No shared ownership of an adapter or a screen.
+- **Daily 15-minute standup**, written where possible; the team is in one time zone, so use that advantage rather than adding meetings.
+- **Monthly scope freeze.** The scope for each roadmap month is fixed on its first working day. New requests go to the next month or to [Beyond the MVP](/docs/roadmap/beyond-the-mvp).
+- **Go / no-go gate at the end of each month**, run against [Dependencies & risks](/docs/roadmap/dependencies-and-risks).
+
+## Related
+
+- [People cost](/docs/team-and-cost/people-cost) — what this team costs
+- [Roadmap → Timeline](/docs/roadmap/timeline) — the 13-week schedule
+- [Total budget](/docs/team-and-cost/total-budget) — the consolidated number

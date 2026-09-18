@@ -1,158 +1,131 @@
 ---
 title: People cost
-description: Monthly and total people cost by role for the SellEasy plan, with US and India salary bands, a blended scenario, and contractor versus full-time notes.
+description: Per-role monthly and three-month cost in rupees for the SellEasy team, what CTC covers and what it does not and the contractor alternative.
 icon: Wallet
 ---
 
-People are about **80% or more** of the budget in every scenario. Figures are **fully loaded annual cost** converted to monthly (÷ 12), multiplied by the FTE plan in [Team plan](/docs/team-and-cost/team-plan).
+Three engineers in India for three months. People are **58% of the expected budget** — the rest is in [Infrastructure](/docs/team-and-cost/infrastructure-cost), [Vendors & AI](/docs/team-and-cost/vendor-and-ai-cost) and one-offs below.
 
-<Callout type="info" title="What “fully loaded” includes">
-**US:** base salary + benefits (health, 401k match), employer payroll taxes, equipment and software, recruiting amortised — roughly **1.25–1.35× base**. Equity is **excluded**.
-**India:** CTC (cost to company, incl. PF, gratuity, insurance) + equipment, employer-of-record or entity overhead where relevant — roughly **1.15–1.25× base**, converted at **₹85 = $1**.
-Ranges reflect seniority and city (US: Bay Area / NYC at the high end, remote mid-cost cities at the low end; India: Bengaluru / Pune / Hyderabad product companies).
+## The run rate
+
+| Role | Count | CTC per person | Per person / month | Line total / month | **3 months** |
+|---|:-:|--:|--:|--:|--:|
+| Senior Software Engineer (tech lead) | 1 | ₹22,00,000 | ₹1,83,333 | ₹1,83,333 | **₹5,50,000** |
+| Software Engineer | 2 | ₹12,00,000 | ₹1,00,000 | ₹2,00,000 | **₹6,00,000** |
+| **Total** | **3** | **₹46,00,000** | | **₹3,83,333** | **₹11,50,000** |
+
+The arithmetic, spelled out:
+
+```text
+SSE   ₹22,00,000 ÷ 12                 = ₹1,83,333 / month
+SE    ₹12,00,000 ÷ 12 = ₹1,00,000 × 2 = ₹2,00,000 / month
+                                 ----------------------------
+Run rate                              = ₹3,83,333 / month
+× 3 months                            = ₹11,50,000  (₹11.5L)
+Annualised run rate                   = ₹46,00,000  (₹46L)
+```
+
+<Callout type="info" title="Month 1 is a full month">
+The team starts Monday **5 October 2026**, so October is about 27 calendar days of employment rather than 31. This model charges a **full month** anyway: salaries are monthly, not daily, and most offers start on the 1st or are paid in full for the joining month. If your offers are pro-rated from the 5th, month 1 people cost falls by roughly **₹49,000**.
 </Callout>
 
-## Rates by role
+## Low, expected and high
 
-<Tabs items={['US (fully-loaded, USD)', 'India (fully-loaded, USD equivalent)']}>
-<Tab value="US (fully-loaded, USD)">
+Bands reflect the market range for these roles in Bengaluru, Pune, Hyderabad, NCR and Chennai product companies, and how competitive your offer needs to be. **These are estimates** — validate against current offers, not against this page.
 
-| Role | Annual — low | Annual — expected | Annual — high | Monthly — expected |
-|---|--:|--:|--:|--:|
-| Founding / lead engineer | $230k | $260k | $300k | $21.7k |
-| Senior backend engineer | $190k | $220k | $250k | $18.3k |
-| Senior frontend engineer | $175k | $200k | $230k | $16.7k |
-| Full-stack / integrations engineer | $180k | $205k | $235k | $17.1k |
-| ML / LLM engineer | $220k | $250k | $290k | $20.8k |
-| DevOps / SRE | $190k | $220k | $250k | $18.3k |
-| QA engineer | $125k | $150k | $175k | $12.5k |
-| Product manager | $180k | $210k | $240k | $17.5k |
-| Product designer | $150k | $180k | $210k | $15.0k |
-| GTM / solutions engineer | $160k | $190k | $220k | $15.8k |
-
-</Tab>
-<Tab value="India (fully-loaded, USD equivalent)">
-
-| Role | Annual — low | Annual — expected | Annual — high | Monthly — expected | Expected in ₹ lakh / year |
+| Case | SSE CTC | SE CTC (each) | Combined CTC | Monthly | **3 months** |
 |---|--:|--:|--:|--:|--:|
-| Founding / lead engineer | $60k | $75k | $95k | $6.3k | ~64 |
-| Senior backend engineer | $40k | $50k | $65k | $4.2k | ~43 |
-| Senior frontend engineer | $32k | $42k | $55k | $3.5k | ~36 |
-| Full-stack / integrations engineer | $35k | $45k | $58k | $3.8k | ~38 |
-| ML / LLM engineer | $50k | $65k | $85k | $5.4k | ~55 |
-| DevOps / SRE | $38k | $48k | $62k | $4.0k | ~41 |
-| QA engineer | $18k | $25k | $32k | $2.1k | ~21 |
-| Product manager | $42k | $55k | $70k | $4.6k | ~47 |
-| Product designer | $25k | $35k | $45k | $2.9k | ~30 |
-| GTM / solutions engineer | $30k | $40k | $55k | $3.3k | ~34 |
+| **Low** — smaller-city or slightly less experienced hires, direct offers | ₹19,00,000 | ₹10,00,000 | ₹39,00,000 | ₹3,25,000 | **₹9,75,000** |
+| **Expected** — the plan | ₹22,00,000 | ₹12,00,000 | ₹46,00,000 | ₹3,83,333 | **₹11,50,000** |
+| **High** — competitive counter-offers, strong product-company candidates | ₹26,00,000 | ₹15,00,000 | ₹56,00,000 | ₹4,66,667 | **₹14,00,000** |
 
-</Tab>
-</Tabs>
+The spread between low and high is **₹4.25L over three months** — smaller than the one-off bucket below, and much smaller than the cost of a two-month schedule slip.
 
-## Cost by role over the plan (expected)
+## What CTC covers
 
-Totals apply the FTE plan (for example, ML/LLM and DevOps at 0.5 FTE; GTM from month 5).
+In India, **CTC (cost to company) is the fully-loaded employer cost of employing someone**, which is exactly what a budget needs. That is why this model uses CTC directly with no additional multiplier.
 
-<Tabs items={['US-heavy', 'India-heavy', 'Blended']}>
-<Tab value="US-heavy">
+<Callout type="info" title="Inside a typical ₹22L or ₹12L CTC">
+**Usually included**
 
-| Role | FTE-months (6 / 9) | 6 months | 9 months |
-|---|:-:|--:|--:|
-| Lead engineer | 6 / 9 | $130.0k | $195.0k |
-| Backend engineers (2) | 11 / 17 | $201.7k | $311.7k |
-| Frontend engineer | 6 / 9 | $100.0k | $150.0k |
-| Integrations engineer | 5 / 8 | $85.4k | $136.7k |
-| ML / LLM engineer | 3 / 4.5 | $62.5k | $93.8k |
-| DevOps / SRE | 3 / 4.5 | $55.0k | $82.5k |
-| QA engineer | 4 / 7 | $50.0k | $87.5k |
-| Product manager | 6 / 9 | $105.0k | $157.5k |
-| Product designer | 3 / 4.5 | $45.0k | $67.5k |
-| GTM / solutions | 2 / 5 | $31.7k | $79.2k |
-| **Total** | **49 / 77.5** | **$866k** | **$1,361k** |
-| Range (low – high) | | $750k – $995k | $1,178k – $1,563k |
+- Basic salary, HRA and special allowance
+- **Employer's PF contribution** — 12% of basic, commonly restricted to the ₹15,000 wage ceiling (about ₹1,800 per month, ₹21,600 a year)
+- **Gratuity accrual** — about 4.81% of basic, set aside against the statutory payment at five years' service
+- **Performance bonus or variable pay** — often 10–15% of CTC, paid quarterly or annually and payable only on performance
+- **Group health and term insurance premiums**
+- Sometimes a flexible-benefits wallet (LTA, telephone, fuel, meal cards)
 
-</Tab>
-<Tab value="India-heavy">
+**Usually not included**
 
-| Role | FTE-months (6 / 9) | 6 months | 9 months |
-|---|:-:|--:|--:|
-| Lead engineer | 6 / 9 | $37.5k | $56.3k |
-| Backend engineers (2) | 11 / 17 | $45.8k | $70.8k |
-| Frontend engineer | 6 / 9 | $21.0k | $31.5k |
-| Integrations engineer | 5 / 8 | $18.8k | $30.0k |
-| ML / LLM engineer | 3 / 4.5 | $16.3k | $24.4k |
-| DevOps / SRE | 3 / 4.5 | $12.0k | $18.0k |
-| QA engineer | 4 / 7 | $8.3k | $14.6k |
-| Product manager | 6 / 9 | $27.5k | $41.3k |
-| Product designer | 3 / 4.5 | $8.8k | $13.1k |
-| GTM / solutions | 2 / 5 | $6.7k | $16.7k |
-| **Total** | **49 / 77.5** | **$203k** | **$317k** |
-| Range (low – high) | | $158k – $262k | $246k – $409k |
+- Laptops and hardware
+- Software licences and AI seats
+- Recruitment or agency fees
+- Workspace or co-working desks
+- Team offsites, professional development budgets
+- ESOPs (non-cash, and separate from CTC)
+</Callout>
 
-</Tab>
-<Tab value="Blended">
+**Two things to check with your payroll provider before locking the budget:**
 
-Lead engineer, product manager and GTM in the **US** (customer-facing and architecture ownership in the customers' time zone); all other roles in **India**.
+1. **Is the variable component inside CTC?** If bonus is 12% of CTC and is genuinely conditional, your expected cash outflow in a three-month window is closer to **₹3,37,000 per month** than ₹3,83,333 — around **₹1.4L less** across the three months. This model conservatively assumes the full CTC is spent.
+2. **Is PF on the full basic or on the ₹15,000 ceiling?** Contributing on full basic raises employer PF materially at these salary levels. If your CTC letters were built on the ceiling but payroll runs on full basic, the difference lands on you, not on the employee.
 
-| Role | Location | 6 months | 9 months |
-|---|---|--:|--:|
-| Lead engineer | US | $130.0k | $195.0k |
-| Backend engineers (2) | India | $45.8k | $70.8k |
-| Frontend engineer | India | $21.0k | $31.5k |
-| Integrations engineer | India | $18.8k | $30.0k |
-| ML / LLM engineer | India | $16.3k | $24.4k |
-| DevOps / SRE | India | $12.0k | $18.0k |
-| QA engineer | India | $8.3k | $14.6k |
-| Product manager | US | $105.0k | $157.5k |
-| Product designer | India | $8.8k | $13.1k |
-| GTM / solutions | US | $31.7k | $79.2k |
-| **Total** | | **$398k** | **$634k** |
-| Range (low – high) | | $333k – $477k | $531k – $759k |
+**Take-home, for offer conversations only.** Under the new tax regime and with PF on the ceiling, ₹22L CTC is roughly **₹1.55L per month in hand** and ₹12L CTC is roughly **₹90,000**. Indicative only — it depends on regime choice, declarations and salary structure, and it does not change the budget. Confirm with a payroll provider.
 
-</Tab>
-</Tabs>
+## Employer-side extras outside CTC
 
-## Monthly people cost (expected)
+These are real, they are not in CTC, and over a three-month window they are large relative to salary because almost all of them land in month 1.
 
-| Month | FTE | US-heavy | Blended | India-heavy |
-|---|:-:|--:|--:|--:|
-| M1 Oct 2026 | 5.5 | $101.3k | $53.0k | $24.7k |
-| M2 Nov 2026 | 8.0 | $142.9k | $62.0k | $33.6k |
-| M3 Dec 2026 | 8.0 | $142.9k | $62.0k | $33.6k |
-| M4 Jan 2027 | 8.5 | $149.2k | $63.0k | $34.7k |
-| M5 Feb 2027 | 9.5 | $165.0k | $78.8k | $38.0k |
-| M6 Mar 2027 | 9.5 | $165.0k | $78.8k | $38.0k |
-| M7 Apr 2027 | 9.5 | $165.0k | $78.8k | $38.0k |
-| M8 May 2027 | 9.5 | $165.0k | $78.8k | $38.0k |
-| M9 Jun 2027 | 9.5 | $165.0k | $78.8k | $38.0k |
-| **6-month total** | | **$866k** | **$398k** | **$203k** |
-| **9-month total** | | **$1,361k** | **$634k** | **$317k** |
+| Item | Low | Expected | High | Note |
+|---|--:|--:|--:|---|
+| Laptops (3 machines) | ₹2,40,000 | ₹3,30,000 | ₹4,50,000 | ₹80k–₹1.5L each. Expected assumes a 16 GB Apple silicon MacBook Air class machine at ~₹1.1L. **Capital, not an expense** — see the callout below |
+| Recruitment fees | ₹0 | ₹1,50,000 | ₹3,83,000 | Low assumes referrals and direct sourcing. High assumes an agency at 8.33% of first-year CTC on all three hires (8.33% × ₹46L) |
+| Co-working / workspace | ₹0 | ₹0 | ₹81,000 | Expected assumes remote-first. High is 3 desks × ₹9,000/month × 3 months |
+| Monitors, peripherals, misc | ₹0 | ₹30,000 | ₹60,000 | ₹10k–₹20k per engineer |
+| **Total one-offs** | **₹2,40,000** | **₹5,10,000** | **₹9,74,000** | |
 
-## Other blends to consider
+Team tooling (GitHub, Sentry, Figma, domains, password manager) adds a further **₹18,000 / ₹40,000 / ₹75,000** — itemised in [Vendor & AI cost → Team tooling](/docs/team-and-cost/vendor-and-ai-cost#team-tooling). Together these make the **"Tooling & one-offs"** bucket of **₹2,58,000 / ₹5,50,000 / ₹10,50,000** used in [Total budget](/docs/team-and-cost/total-budget).
 
-| Blend | Change vs. "Blended" | Effect on 9-month people cost (expected) |
-|---|---|--:|
-| Move the ML/LLM engineer to the US | +0.5 FTE US | +~$69k |
-| Move the designer to the US | +0.5 FTE US | +~$54k |
-| Move the PM to India, founder acts as US product lead | −1 FTE US | −~$116k |
-| Add a second integrations engineer (India) in Phase 4 | +1 FTE for 3 months | +~$11k |
-| Add a second integrations engineer (US) in Phase 4 | +1 FTE for 3 months | +~$51k |
+<Callout type="warn" title="Laptops are the biggest single discretionary line after salary">
+₹3.3L of hardware against ₹11.5L of salary looks disproportionate because the window is three months. The options, cheapest first: engineers use their own machines (₹0, but a security and support headache), lease at roughly ₹4,000–₹6,000 per machine per month (**≈₹45,000** for three machines over three months), buy refurbished (**≈₹2L**), or buy new (**₹3.3L**). Buying new is assumed here because the machines outlive the three months and because a slow laptop is the most expensive thing you can give an engineer.
+</Callout>
 
-## Contractors vs. full-time
+## People cost by month
 
-| Option | Typical rate (indicative) | Best for | Watch out for |
-|---|---|---|---|
-| **Full-time employees** | As above | Core roles (lead, backend, frontend, PM) | Hiring lead time (4–10 weeks) |
-| **US contractors** | $100–$200 / hour (≈ $17k–$35k / month full-time) | Postgres driver, Salesforce, security reviews | Higher monthly cost; knowledge retention |
-| **India contractors / agencies** | $25–$60 / hour (≈ $4k–$10k / month) | Integrations, QA surges, UI work | Quality variance; needs strong review |
-| **Fractional DevOps / SRE firm** | $4k–$12k / month retainer | AWS setup, IaC, CI/CD, on-call backup | Define scope and response times |
-| **Employer of record (EOR)** | $400–$700 per person per month on top of salary | Hiring in India without an entity | Adds ~5–10% to India costs |
-| **Fractional ML / prompt specialist** | $120–$250 / hour | Evals, prompt design, research agent | Keep evaluation data in-house |
+Expected case. One-offs shown separately because they distort month 1.
 
-**Guidance:** keep architecture, data and security ownership with employees. Use contractors for well-bounded adapters (each vendor is a clear unit of work) and for peaks around the MVP and GA gates.
+| Month | SSE | SE ×2 | **Salary total** | One-offs | **Month total** |
+|---|--:|--:|--:|--:|--:|
+| M1 · Oct 2026 | ₹1,83,333 | ₹2,00,000 | **₹3,83,333** | ₹5,10,000 | **₹8,93,333** |
+| M2 · Nov 2026 | ₹1,83,333 | ₹2,00,000 | **₹3,83,333** | — | **₹3,83,333** |
+| M3 · Dec 2026 | ₹1,83,334 | ₹2,00,000 | **₹3,83,334** | — | **₹3,83,334** |
+| **Total** | **₹5,50,000** | **₹6,00,000** | **₹11,50,000** | **₹5,10,000** | **₹16,60,000** |
+
+## Contractor alternative
+
+If hiring takes too long, or you want to avoid notice periods and severance inside a three-month window, contractors are the fallback. Rates below are **indicative Indian market ranges** — they vary widely by skill, city and how the work is sourced. **Verify with actual quotes.**
+
+| Option | Indicative day rate | Indicative monthly (20–22 days) | Best for | Watch out for |
+|---|--:|--:|---|---|
+| Freelance mid-level full-stack | ₹5,000 – ₹9,000 | ₹1,00,000 – ₹1,90,000 | A bounded adapter, a set of screens | Quality variance; needs strong review, which costs SSE time |
+| Freelance senior full-stack | ₹9,000 – ₹15,000 | ₹1,80,000 – ₹3,15,000 | Integration work, frontend build-out | Availability; often juggling clients |
+| Specialist (AWS/IaC, Postgres, deliverability) | ₹12,000 – ₹25,000 | ₹2,50,000 – ₹5,25,000 | A time-boxed piece: AWS landing zone, migration review, SES warm-up | Best used for days, not months |
+| Small agency or studio team | — | ₹1,50,000 – ₹3,50,000 per engineer | Burst capacity with some management included | Knowledge leaves when they do; IP assignment must be explicit |
+| Contract designer | ₹8,000 – ₹18,000 | — | 10–15 days of screens: approval queue, onboarding, analytics | Cheapest meaningful quality win in this plan (₹1.5L – ₹3L) |
+
+**How that compares.** An SE at ₹12L CTC costs **₹1,00,000 per month**. An equivalent contractor costs **₹1.5L – ₹3L per month** — roughly **1.5× to 3×**. You pay that premium for: no notice period, no laptop, no recruitment fee, an immediate start and an easy exit. You lose retention, context and anyone who cares about the codebase after December.
+
+<Callout type="warn" title="Contractor costs that are easy to forget">
+- **GST at 18%** on invoices from a registered contractor or agency — recoverable as input credit if you are registered, a real 18% cost if you are not.
+- **TDS at 10%** under section 194J on professional fees; you must deduct, deposit and file.
+- **IP assignment** must be written into the contract. Without it, the code may not be yours.
+- **No gratuity, PF or notice** — which is the point, but it also means zero retention leverage.
+</Callout>
+
+**Recommendation for this plan:** keep all three core roles as employees. The SSE especially — the architecture, AWS accounts and production knowledge must not walk out on 31 December. Use contractors only for **time-boxed specialist work** (an AWS landing-zone review, SES deliverability setup, or 10–15 days of design) that would otherwise consume SSE capacity.
 
 ## Related
 
-- [Team plan](/docs/team-and-cost/team-plan)
-- [Total budget](/docs/team-and-cost/total-budget)
-- [Assumptions → sensitivity](/docs/team-and-cost/assumptions#sensitivity)
+- [Team plan](/docs/team-and-cost/team-plan) — who does what, and the capacity these salaries buy
+- [Total budget](/docs/team-and-cost/total-budget) — how this rolls up
+- [Assumptions](/docs/team-and-cost/assumptions) — the numbered list behind every figure here

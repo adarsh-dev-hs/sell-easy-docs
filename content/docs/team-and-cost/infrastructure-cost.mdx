@@ -1,119 +1,124 @@
 ---
 title: Infrastructure cost
-description: Estimated monthly AWS and Vercel run cost for each SellEasy environment, service by service, at MVP scale and at growth scale.
+description: Per-service AWS and frontend hosting estimates in USD and rupees for the three-month SellEasy build, with a lean single-environment option and a safer three-environment option.
 icon: Server
 ---
 
-These estimates cover the [target architecture](/docs/architecture/target-architecture) on AWS, with the web app on Vercel or CloudFront + S3. They are **monthly, in USD, for us-east-1 at on-demand prices**, excluding tax and support plans. Check the AWS Pricing Calculator before committing — prices and free tiers change.
+Cloud cost for the three months from **5 October to 31 December 2026**, based on the [target architecture](/docs/architecture/target-architecture) and the topology in [Engineering → Deployment](/docs/engineering/deployment).
 
-<Callout type="info" title="Two sizing points">
-**MVP scale** — pilot and early customers: ≤ 20 workspaces, ≤ 100 users, ~50k signals and ~20k emails per month, a few GB of data.
-**Growth scale** — after GA: ~200 workspaces, ~2,000 users, ~2M signals and ~1M emails per month, ~100–300 GB of data.
+<Callout type="warn" title="Basis of these estimates">
+**AWS us-east-1, on-demand list prices, no Savings Plans, no credits, excluding tax and support plans.** Converted at an assumed **₹88 per USD**. Sized for pilot scale: up to about 10 workspaces, 50 users, ~20k signals and ~10k emails per month, a few GB of data. Prices change — check the AWS Pricing Calculator before you commit. Every figure here is an **estimate**.
 </Callout>
 
-## Production — service by service
+## Two ways to run this
 
-<Tabs items={['MVP scale', 'Growth scale']}>
-<Tab value="MVP scale">
+<Cards>
+  <Card title="Lean — one environment" description="App Runner + a small RDS instance. No ALB, no NAT Gateway, no staging tier. About ₹7,700 per month. Right if cash is tight and the team can deploy carefully." />
+  <Card title="Safer — three environments" description="ECS Fargate behind an ALB, dev / staging / production separated. About ₹33,400 per month. Right if a pilot customer's data is in production." />
+</Cards>
 
-| Service | Sizing assumption | Low | Expected | High |
-|---|---|--:|--:|--:|
-| CloudFront + S3 (web) + WAF | Static assets, basic WAF rules | $15 | $30 | $60 |
-| Application Load Balancer | 1 ALB, low LCU | $20 | $25 | $35 |
-| ECS Fargate | API 2 × (0.5–1 vCPU, 1–2 GB), worker 1 × same | $55 | $90 | $160 |
-| RDS PostgreSQL | `db.t4g.medium` Multi-AZ, 50–100 GB gp3, 7-day backups | $100 | $150 | $220 |
-| ElastiCache Redis | None at first → `cache.t4g.small` (+ replica) | $0 | $25 | $50 |
-| OpenSearch | None at first (Postgres search) → 2 × `t3.small.search` | $0 | $55 | $120 |
-| EventBridge + SQS | ≤ a few million events and messages | $1 | $3 | $10 |
-| Lambda + Step Functions | Webhook helpers, bulk enrichment | $2 | $10 | $25 |
-| SES | ~20k–100k emails ($0.10 per 1,000), inbound, optional dedicated IP (~$25) | $5 | $15 | $40 |
-| Secrets Manager + KMS | ~20–40 secrets at $0.40 each, a few keys | $10 | $15 | $25 |
-| Cognito | Not used until Phase 4; free tier covers early MAUs | $0 | $0 | $25 |
-| CloudWatch | Logs (5–20 GB), metrics, alarms, dashboards | $25 | $50 | $90 |
-| NAT Gateway | 1 gateway + data processing | $35 | $45 | $70 |
-| Route 53, ACM, ECR, S3 backups | Hosted zones, image storage, snapshots | $10 | $20 | $35 |
-| Data transfer out | API and email traffic | $5 | $20 | $50 |
-| **Production total** | | **~$280** | **~$550** | **~$1,020** |
+The budget uses a **ramp between the two**: lean in October, safer by December when a pilot customer is on it.
 
-</Tab>
-<Tab value="Growth scale">
+## Safer option — production, service by service
 
-| Service | Sizing assumption | Low | Expected | High |
-|---|---|--:|--:|--:|
-| CloudFront + S3 (web) + WAF | More traffic, managed rule groups | $60 | $120 | $250 |
-| Application Load Balancer | Higher LCU | $40 | $60 | $100 |
-| ECS Fargate | API 4–6 × (1 vCPU, 2 GB), workers 4–8 × (1 vCPU, 2 GB), autoscaling | $500 | $850 | $1,300 |
-| RDS PostgreSQL | `db.r6g.large` Multi-AZ + read replica, 300–500 GB gp3, PITR | $550 | $800 | $1,100 |
-| ElastiCache Redis | `cache.r6g.large` primary + replica (or smaller) | $250 | $320 | $450 |
-| OpenSearch | 3 data nodes (`r6g.large.search` class), EBS | $350 | $550 | $850 |
-| EventBridge + SQS | Tens of millions of events and messages | $15 | $35 | $70 |
-| Lambda + Step Functions | Enrichment workflows, webhooks | $50 | $120 | $250 |
-| SES | ~1M emails, inbound, 2–3 dedicated IPs | $120 | $180 | $300 |
-| Secrets Manager + KMS | More secrets, rotation | $20 | $35 | $60 |
-| Cognito (with SAML federation) | ~2,000 MAU; federated users priced per MAU | $30 | $60 | $150 |
-| CloudWatch | 50–150 GB logs, custom metrics, alarms | $150 | $280 | $450 |
-| NAT Gateway | 2–3 gateways (multi-AZ) + data | $100 | $160 | $250 |
-| Route 53, ACM, ECR, S3 backups | More snapshots and exports | $40 | $80 | $150 |
-| Data transfer out | Higher API, webhook and email volume | $100 | $220 | $400 |
-| **Production total** | | **~$2,400** | **~$3,900** | **~$6,100** |
+| Service | Sizing assumption | USD / month | **₹ / month** |
+|---|---|--:|--:|
+| **ECS Fargate** | API 2 tasks × (0.5 vCPU, 1 GB) + 1 worker task, always on | $55 | **₹4,840** |
+| **Application Load Balancer** | 1 ALB, low LCU usage | $22 | **₹1,936** |
+| **RDS PostgreSQL** | `db.t4g.medium`, single-AZ, 100 GB gp3, 7-day automated backups | $63 | **₹5,544** |
+| **NAT Gateway** | 1 gateway + data processing | $38 | **₹3,344** |
+| **S3 + CloudFront** | Frontend static assets, low egress | $12 | **₹1,056** |
+| **Secrets Manager + KMS** | ~25 secrets at $0.40 each, 1–2 customer-managed keys | $13 | **₹1,144** |
+| **CloudWatch** | 8–10 GB logs, custom metrics, alarms, one dashboard | $20 | **₹1,760** |
+| **SES** | ~20k emails at $0.10 per 1,000, inbound receiving, configuration set | $5 | **₹440** |
+| **EventBridge + SQS** | Pilot-scale event and message volume | $2 | **₹176** |
+| **Route 53, ACM, ECR, snapshots, data transfer** | Hosted zones, container images, backups, egress | $15 | **₹1,320** |
+| **ElastiCache Redis** | **Not provisioned in these three months** — `cache.t4g.micro` would add ~$12 | $0 | **₹0** |
+| **OpenSearch** | **Not provisioned** — Postgres `pg_trgm` handles search at this scale | $0 | **₹0** |
+| **Production total** | | **$245** | **≈ ₹21,560** |
 
-</Tab>
-</Tabs>
+## Lean option — one environment, service by service
+
+Uses **App Runner** instead of ECS + ALB + NAT. App Runner terminates TLS, scales and gives you a URL with no load balancer and no NAT Gateway to pay for. It is less configurable and harder to lock into a private VPC, which is exactly the trade.
+
+| Service | Sizing assumption | USD / month | **₹ / month** |
+|---|---|--:|--:|
+| **App Runner** | 1 service, 0.5 vCPU / 1 GB, always on | $28 | **₹2,464** |
+| **RDS PostgreSQL** | `db.t4g.small`, single-AZ, 20 GB gp3, 7-day backups | $27 | **₹2,376** |
+| **S3 + CloudFront** | Frontend static assets | $8 | **₹704** |
+| **Secrets Manager + KMS** | ~10 secrets | $5 | **₹440** |
+| **CloudWatch** | Logs and a handful of alarms | $10 | **₹880** |
+| **SES** | Low volume | $2 | **₹176** |
+| **Route 53, ECR, data transfer** | | $8 | **₹704** |
+| **Lean total** | | **$88** | **≈ ₹7,744** |
+
+<Callout type="info" title="What the lean option gives up">
+No staging environment (you test in production, or locally), no private-subnet isolation, no ALB-level WAF, no Multi-AZ. Acceptable while the only data is yours. **Not acceptable once a pilot customer's contact data is in the database** — at that point move to the safer option, which is why the ramp below crosses over in November.
+</Callout>
 
 ## All environments
 
-| Environment | What runs there | MVP scale (low / expected / high) | Growth scale (low / expected / high) |
-|---|---|--:|--:|
-| **Production** | Full stack (above) | $280 / $550 / $1,020 | $2,400 / $3,900 / $6,100 |
-| **Staging** | Same services, single-AZ, smallest sizes, scaled down at night | $150 / $250 / $400 | $600 / $900 / $1,400 |
-| **Development and previews** | Shared dev database, preview deployments, CI runners beyond free minutes | $30 / $90 / $150 | $100 / $170 / $250 |
-| **Stakeholder demo** | Frontend only on Vercel with `NEXT_PUBLIC_DATA_SOURCE=mock` — no backend cost | $20 / $60 / $100 | $50 / $80 / $150 |
-| **Analytics warehouse** | Redshift Serverless (Phase 4), base capacity limited, scheduled workloads | — | $250 / $500 / $1,000 |
-| **Total per month** | | **~$480 / ~$950 / ~$1,670** | **~$3,400 / ~$5,550 / ~$8,900** |
+Safer option, monthly, at pilot scale.
 
-<Callout type="success" title="The demo is almost free">
-Because mock mode runs the backend logic in the browser, a public stakeholder demo needs only a Vercel project (Pro is about $20 per member per month; commercial use is not allowed on the free Hobby plan). See [Environments & data modes](/docs/architecture/environments-and-data-modes).
+| Environment | What runs there | USD / month | **₹ / month** |
+|---|---|--:|--:|
+| **Production** | Full stack as above | $245 | **₹21,560** |
+| **Staging** | Same services at the smallest sizes, single-AZ, no NAT, scaled down overnight | $90 | **₹7,920** |
+| **Development & previews** | Shared small dev database, Vercel preview deployments, CI minutes beyond the free tier | $45 | **₹3,960** |
+| **Total** | | **$380** | **≈ ₹33,440** |
+
+**Stakeholder demo:** effectively free. Mock data mode runs the backend logic in the browser, so a public demo needs only a frontend deployment — no database, no secrets, no backend. See [Environments & data modes](/docs/architecture/environments-and-data-modes).
+
+### Frontend hosting: Vercel or CloudFront + S3
+
+| Option | USD / month | **₹ / month** | Pros | Cons |
+|---|--:|--:|---|---|
+| **Vercel Pro** | $20 per member + usage; 2 members ≈ $40–$60 | **₹3,520 – ₹5,280** | Preview deploys on every PR, zero ops, already used for the demo | A second vendor and a second bill; commercial use is **not** permitted on the free Hobby plan |
+| **CloudFront + S3** | $8 – $20 | **₹704 – ₹1,760** | One cloud, one bill, WAF in front of web and API | Needs a static-export-compatible build and CI work — engineer time that is scarcer than ₹3,000 a month |
+
+**Recommendation for these three months:** pay for Vercel. The preview deployments are worth more than the ₹3,000 monthly difference to a three-person team, and the CI work to move to S3 is engineer-weeks you do not have.
+
+## Spend across the three months
+
+Expected case. Environments come online as the roadmap needs them.
+
+| Month | What is running | USD | **₹** |
+|---|---|--:|--:|
+| **M1 · Oct 2026** | Dev from week 1; staging from week 3; Vercel previews. No production. | $120 | **₹10,500** |
+| **M2 · Nov 2026** | + production from mid-month (pilot data arrives), NAT, ALB, Secrets Manager | $280 | **₹24,500** |
+| **M3 · Dec 2026** | All three environments, larger RDS, load testing, launch traffic, log volume up | $400 | **₹35,000** |
+| **Expected total** | | **$795** | **₹70,000** |
+| **Low** | Lean path throughout, no separate staging | $341 | **₹30,000** |
+| **High** | Multi-AZ RDS, Redis added early, more logging, heavier load tests (×1.8) | $1,432 | **₹1,26,000** |
+
+<Callout type="success" title="Free tier and credits can take this close to zero">
+This estimate deliberately assumes **no credits**, so the number is defensible. In practice:
+
+- **AWS Free Tier** (new accounts, 12 months) covers 750 hours a month of `db.t4g.micro` RDS, 5 GB of S3, 1 TB of CloudFront egress and a generous CloudWatch allowance — enough to run the dev and staging tiers at near-zero cost.
+- **AWS Activate** gives startups credits from **$1,000** (Founders, self-serve) up to **$5,000–$100,000** through an accelerator, incubator or VC referral. **$1,000 ≈ ₹88,000** — more than the entire expected infrastructure budget for this quarter.
+- **Anthropic, GitHub and Vercel** run similar startup programmes worth checking.
+
+Apply for AWS Activate in **week 1**, not week 10. If credits land, treat the ₹70,000 as recovered contingency rather than as budget to spend.
 </Callout>
 
-### Vercel vs. CloudFront + S3 for the web app
+## Cost levers, cheapest first
 
-| Option | Monthly cost (indicative) | Pros | Cons |
-|---|---|---|---|
-| **Vercel Pro** | $20 per member + usage (bandwidth, function invocations) — typically $40–$200 at these scales | Preview deployments, zero-ops, already used for the demo | Second vendor; usage-based overages |
-| **CloudFront + S3** | $10–$60 at MVP, $60–$250 at growth | One cloud, one bill, WAF in front of both web and API | Needs a static-export-compatible build and CI work |
+| Lever | Saving | Trade-off |
+|---|---|---|
+| **Apply for AWS Activate credits** | Up to the entire line | Application takes days, not hours — start in week 1 |
+| **Drop the NAT Gateway** — VPC endpoints for S3, SQS and Secrets Manager, or run tasks in public subnets with tight security groups | ~$38/mo (**₹3,300**) | Endpoints have their own hourly cost; public subnets need careful security groups |
+| **Scale staging to zero overnight and at weekends** | 50–65% of staging (**~₹4,500/mo**) | A scheduled scaling rule the SSE has to write and maintain |
+| **Single-AZ RDS during the build** (already assumed) | ~50% of the RDS line | No automatic failover. Acceptable pre-launch, revisit before real customer data |
+| **Graviton instance classes** (`t4g`, already assumed) | ~20% vs. `t3` | None worth mentioning |
+| **CloudWatch log retention at 14 days**, archive to S3 | ₹500 – ₹1,000/mo | Shorter forensic window |
+| **Do not provision Redis or OpenSearch** (already assumed) | ~$65/mo (**₹5,700**) | Only valid while Postgres meets latency targets — measure first, per the [migration principles](/docs/architecture/target-architecture#principles-for-the-migration) |
+| **AWS Budgets and cost-anomaly alerts from day one** | Prevents surprises | Fifteen minutes of setup; do it in week 1 |
 
-## Infrastructure spend during the build
-
-Spend ramps as environments come online. These are the figures used in [Total budget](/docs/team-and-cost/total-budget).
-
-| Month | What is running | Expected monthly |
-|---|---|--:|
-| M1 Oct 2026 | Dev, staging from week 4, demo | $600 |
-| M2 Nov 2026 | + production (pilot) | $1,200 |
-| M3 Dec 2026 | + queues, scheduler | $1,500 |
-| M4 Jan 2027 | MVP launch, load tests | $1,800 |
-| M5 Feb 2027 | + Redis, OpenSearch | $2,500 |
-| M6 Mar 2027 | GA, autoscaling | $3,000 |
-| M7 Apr 2027 | GA traffic grows, Cognito | $3,500 |
-| M8 May 2027 | + Redshift Serverless | $4,000 |
-| M9 Jun 2027 | Growth trajectory | $4,500 |
-| **6-month total** | | **$10.6k** (low $6.4k, high $17.0k) |
-| **9-month total** | | **$22.6k** (low $13.6k, high $36.2k) |
-
-Low and high apply ×0.6 and ×1.6 to the expected ramp.
-
-## Cost levers
-
-- **Savings Plans / reserved instances** for Fargate and RDS after GA: typically 20–40% off steady-state compute.
-- **Graviton** (`t4g`, `r6g`) instances, already assumed.
-- **Scale staging to zero** outside working hours.
-- **VPC endpoints** for S3, SQS and Secrets Manager to cut NAT data charges.
-- **Log retention** of 14–30 days in CloudWatch; archive to S3.
-- **Delay OpenSearch** until Postgres trigram search misses its latency target.
-- **Budgets and anomaly alerts** in AWS from day one.
+**Not worth doing in a three-month window:** Savings Plans or Reserved Instances. They need a one- or three-year commitment against a workload whose shape you will not know until January.
 
 ## Related
 
-- [Target architecture](/docs/architecture/target-architecture)
-- [Engineering → Deployment](/docs/engineering/deployment)
-- [Assumptions](/docs/team-and-cost/assumptions)
+- [Target architecture](/docs/architecture/target-architecture) — what these services are for
+- [Engineering → Deployment](/docs/engineering/deployment) — the production checklist before pilot data lands
+- [Total budget](/docs/team-and-cost/total-budget) — how this ₹70,000 rolls into the total
+- [Assumptions](/docs/team-and-cost/assumptions#infrastructure) — the numbered assumptions behind this page

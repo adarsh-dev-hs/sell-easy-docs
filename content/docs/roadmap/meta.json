@@ -1,7 +1,7 @@
 {
-  "title": "Roadmap (6–9 months)",
-  "description": "Phased delivery plan",
+  "title": "Roadmap (3 months)",
+  "description": "Compressed delivery plan for a three-person AI-assisted team",
   "icon": "Milestone",
   "root": true,
-  "pages": ["index", "phase-1-foundation", "phase-2-real-integrations", "phase-3-scale-and-intelligence", "phase-4-enterprise-and-analytics", "timeline", "dependencies-and-risks"]
+  "pages": ["index", "month-1-foundation", "month-2-integrations", "month-3-launch", "beyond-the-mvp", "timeline", "dependencies-and-risks"]
 }

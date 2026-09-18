@@ -1,87 +1,97 @@
 ---
 title: Team & cost
-description: Recommended SellEasy team by phase and headline budget ranges for 6 and 9 months, covering people, infrastructure, vendors and AI.
-icon: Users
+description: Three engineers in India for three months, AI-assisted, with the headline SellEasy budget in rupees — people, infrastructure, vendors, AI and one-offs.
+icon: IndianRupee
 ---
 
-This tab estimates **who** is needed to deliver the [roadmap](/docs/roadmap) and **what it costs**. The figures are planning estimates for founders and budget holders, not quotes.
+This tab sizes **who builds SellEasy** and **what it costs**, for one specific plan: **three engineers, based in India, for three months**, delivering the [roadmap](/docs/roadmap) with heavy AI assistance. Every figure is a planning estimate in **Indian rupees**, not a quote.
 
 <Callout type="warn" title="Estimates, not quotes">
-All figures are in **US dollars** and are **estimates**. Salaries vary by city and seniority. Vendor prices change often, and many vendors (Bombora, Apollo enterprise, Clearbit / HubSpot Breeze, RB2B, HeyReach, Instantly, Mailpool, Fireflies) are quote-based or tiered, so **verify with each vendor**. LLM prices are assumptions — **check current Anthropic pricing**. Every assumption is listed in [Assumptions](/docs/team-and-cost/assumptions).
+Salaries are stated as **CTC** and vary by city, seniority and market. Cloud and vendor prices change often and many vendors quote privately. Anthropic prices used here are an **assumption — verify current Anthropic pricing** before you commit. USD amounts are converted at an assumed **₹88 per USD**. Every assumption is listed and numbered in [Assumptions](/docs/team-and-cost/assumptions).
 </Callout>
 
-## Recommended team by phase
+## The plan in one paragraph
 
-| Role | Phase 1 (M1–2) | Phase 2 (M3–4) | Phase 3 (M5–6) | Phase 4 (M7–9) |
-|---|:-:|:-:|:-:|:-:|
-| Founding / lead engineer | 1 | 1 | 1 | 1 |
-| Backend engineers | 1 → 2 | 2 | 2 | 2 |
-| Frontend engineer | 1 | 1 | 1 | 1 |
-| Full-stack / integrations engineer | 0 → 1 | 1 | 1 | 1 |
-| ML / LLM engineer | 0.5 | 0.5 | 0.5 | 0.5 |
-| DevOps / SRE (fractional) | 0.5 | 0.5 | 0.5 | 0.5 |
-| QA engineer | 0 → 0.5 | 0.5 → 1 | 1 | 1 |
-| Product manager | 1 | 1 | 1 | 1 |
-| Product designer (part-time) | 0.5 | 0.5 | 0.5 | 0.5 |
-| GTM / solutions engineer | — | — | 1 | 1 |
-| **Total FTE** | **5.5 → 8.0** | **8.0 → 8.5** | **9.5** | **9.5** |
+Three engineers — one Senior Software Engineer acting as tech lead, two Software Engineers — work from **5 October 2026 to 31 December 2026** (13 calendar weeks). The founder acts as product manager. The SSE owns infrastructure. The team tests its own work. AI pair programming (Claude Code and the Anthropic API) is assumed throughout for scaffolding, adapters, tests, migrations and documentation; that assumption is the reason three people in three months is considered feasible at all.
 
-Details, hiring order and a lean alternative: [Team plan](/docs/team-and-cost/team-plan).
+## The team
+
+| Role | Count | CTC per person | Monthly cost | 3-month cost |
+|---|:-:|--:|--:|--:|
+| Senior Software Engineer (tech lead) | 1 | ₹22,00,000 | ₹1,83,333 | ₹5,50,000 |
+| Software Engineer | 2 | ₹12,00,000 | ₹2,00,000 | ₹6,00,000 |
+| **Total** | **3** | **₹46,00,000 combined** | **₹3,83,333** | **₹11,50,000** |
+
+The arithmetic: ₹22,00,000 ÷ 12 = ₹1,83,333 for the SSE; ₹12,00,000 ÷ 12 = ₹1,00,000 per SE, ×2 = ₹2,00,000; total run rate **₹3,83,333 per month**, or **₹11.5L over three months**.
+
+There is **no separate PM, designer, DevOps engineer or QA engineer**. See [Team plan](/docs/team-and-cost/team-plan) for how that is covered and what it puts at risk.
 
 ## Headline budget
 
-Three staffing models are compared: **US-heavy** (whole team in the US), **India-heavy** (whole team in India) and **Blended** (lead engineer, PM and GTM in the US; everyone else in India). Totals include people, infrastructure, vendors, AI, tooling and compliance, **plus 12.5% contingency**.
+Three months, all-in, including a **12.5% contingency**.
 
-| Scenario | 6 months (to GA) — expected | 6 months — range | 9 months (to enterprise release) — expected | 9 months — range |
-|---|--:|--:|--:|--:|
-| **US-heavy** | **$1.04M** | $0.88M – $1.22M | **$1.69M** | $1.42M – $2.02M |
-| **Blended** | **$0.51M** | $0.41M – $0.64M | **$0.87M** | $0.69M – $1.11M |
-| **India-heavy** | **$0.29M** | $0.22M – $0.40M | **$0.51M** | $0.37M – $0.72M |
+| Case | Before contingency | **With 12.5% contingency** |
+|---|--:|--:|
+| Low | ₹13,45,000 | **₹15,13,100** (₹15.1L) |
+| **Expected** | **₹19,75,000** | **₹22,21,900** (₹22.2L) |
+| High | ₹30,21,000 | **₹33,98,600** (₹34.0L) |
 
-### Where the money goes (expected, before contingency)
+**Plan for roughly ₹22.2 lakh, with a band of ₹15.1L – ₹34.0L.** At 10% contingency the expected case is ₹21.7L; at 15%, ₹22.7L.
 
-| Cost line | 6 months | 9 months | Share of blended 9-month total | Detail |
-|---|--:|--:|--:|---|
-| People — US-heavy | $866k | $1,361k | — | [People cost](/docs/team-and-cost/people-cost) |
-| People — Blended | $398k | $634k | 82% | |
-| People — India-heavy | $203k | $317k | — | |
-| AWS + Vercel (all environments) | $10.6k | $22.6k | 3% | [Infrastructure cost](/docs/team-and-cost/infrastructure-cost) |
-| Data, intent, outreach and CRM vendors (dev, sandbox, pilot) | $16.0k | $31.0k | 4% | [Vendor & AI cost](/docs/team-and-cost/vendor-and-ai-cost) |
-| Anthropic Claude usage | $5.5k | $14.5k | 2% | |
-| Tooling (GitHub, Linear, Figma, Sentry, …) | $12.2k | $19.4k | 3% | |
-| Security and compliance (pen test, SOC 2 readiness) | $12.0k | $52.0k | 7% | [Total budget](/docs/team-and-cost/total-budget) |
-| **Non-people subtotal** | **$56k** | **$140k** | **18%** | |
+## Where the money goes
 
-```mermaid
-flowchart LR
-  subgraph B9["Blended, 9 months, expected ≈ $774k before contingency"]
-    p["People<br/>$634k · 82%"]
-    c["Compliance<br/>$52k · 7%"]
-    v["Vendors<br/>$31k · 4%"]
-    i["Infrastructure<br/>$23k · 3%"]
-    t["Tooling<br/>$19k · 3%"]
-    a["Claude<br/>$15k · 2%"]
-  end
-```
+Expected case, three months, **before** contingency.
+
+| Bucket | Low | Expected | High | Share of expected | Detail |
+|---|--:|--:|--:|--:|---|
+| **People** (3 engineers, CTC) | ₹9,75,000 | **₹11,50,000** | ₹14,00,000 | 58% | [People cost](/docs/team-and-cost/people-cost) |
+| **Tooling & one-offs** (laptops, recruitment, SaaS seats, domains) | ₹2,58,000 | **₹5,50,000** | ₹10,50,000 | 28% | [People cost](/docs/team-and-cost/people-cost#employer-side-extras-outside-ctc) · [Vendor & AI cost](/docs/team-and-cost/vendor-and-ai-cost#team-tooling) |
+| **Vendors & AI** (Anthropic dev seats + product LLM usage + data/outreach sandboxes) | ₹82,000 | **₹2,05,000** | ₹4,45,000 | 10% | [Vendor & AI cost](/docs/team-and-cost/vendor-and-ai-cost) |
+| **Infrastructure** (AWS + frontend hosting, three environments) | ₹30,000 | **₹70,000** | ₹1,26,000 | 4% | [Infrastructure cost](/docs/team-and-cost/infrastructure-cost) |
+| **Total** | **₹13,45,000** | **₹19,75,000** | **₹30,21,000** | 100% | [Total budget](/docs/team-and-cost/total-budget) |
+
+<Callout type="info" title="Why one-offs look so large">
+Laptops (₹3.3L for three machines) and recruitment fees (₹1.5L) are **one-time** costs that land almost entirely in month 1. Over a three-month window they look like 28% of spend; spread over a year they would be roughly 7%. If the engineers bring their own machines, or you hire without an agency, the expected total drops by up to ₹4.8L on its own — the single biggest discretionary lever in this budget.
+</Callout>
+
+## Monthly cash view
+
+Expected case, before contingency. Month 1 is front-loaded by hardware and hiring fees.
+
+| Month | People | Infra | Vendors & AI | Tooling & one-offs | **Total** | **Cumulative** |
+|---|--:|--:|--:|--:|--:|--:|
+| M1 · 5–31 Oct 2026 | ₹3,83,333 | ₹10,500 | ₹50,600 | ₹5,26,700 | **₹9,71,100** | ₹9,71,100 |
+| M2 · Nov 2026 | ₹3,83,333 | ₹24,500 | ₹67,000 | ₹11,650 | **₹4,86,500** | ₹14,57,600 |
+| M3 · Dec 2026 | ₹3,83,334 | ₹35,000 | ₹87,500 | ₹11,650 | **₹5,17,400** | **₹19,75,000** |
+
+Full breakdown, contingency and the per-month cash view with contingency applied: [Total budget](/docs/team-and-cost/total-budget).
 
 ## Key assumptions
 
-- Work starts **5 October 2026**; month 1 = October 2026; the team ramps as in [Team plan](/docs/team-and-cost/team-plan).
-- Salaries are **fully loaded** (base + benefits, payroll taxes, equipment, recruiting amortised). US at US-market senior rates; India at Bengaluru / Pune product-company rates converted at **₹85 = $1**.
-- Customers **bring their own vendor keys** for data and outreach tools; SellEasy pays only for development, sandbox and pilot usage of those tools, plus platform-owned services (AWS, Claude).
-- AWS region **us-east-1**, on-demand pricing, no Savings Plans during the build.
-- LLM prices: Claude Opus 5 $5 / $25, Claude Sonnet 5 $2 / $10, Claude Haiku 4.5 $1 / $5 per million input / output tokens — **assumption, check current Anthropic pricing**.
-- Revenue is **not** netted off; these are gross costs.
+These are the ones worth arguing about before anything else. The complete numbered list is in [Assumptions](/docs/team-and-cost/assumptions).
 
-Full list and sensitivity: [Assumptions](/docs/team-and-cost/assumptions).
+- **Duration is fixed at three months**, 5 October – 31 December 2026, matching the [roadmap](/docs/roadmap/timeline). Burn is almost entirely fixed people cost, so a slip is expensive: roughly **₹2.2L per fortnight**.
+- **CTC is the fully-loaded employer cost.** It covers base, employer PF, gratuity accrual, insurance and bonus. It does **not** cover laptops, software, recruitment fees or workspace — those are budgeted separately.
+- **AI assistance is assumed, not optional.** Every engineer has a paid Claude Code seat. The plan assumes roughly a **1.25–1.35× throughput multiplier** overall, not the 5× the marketing suggests. See [how AI assistance changes throughput](/docs/team-and-cost/team-plan#how-ai-assistance-changes-throughput).
+- **₹88 per USD** for every cloud and vendor price. A ±5% FX move changes the non-people budget by about ±₹40,000.
+- **Customers bring their own vendor keys** for enrichment, intent and outreach tools. SellEasy pays only for development and sandbox tiers during these three months.
+- **AWS at list prices, no credits.** An AWS Activate credit would take the ₹70,000 infrastructure line close to zero.
+- **No attrition, no notice-period gaps, no raises** inside the three months.
+- **Excluded:** founder salary, office, marketing, legal entity setup, penetration testing, SOC 2 and any revenue offset.
 
 ## Pages in this tab
 
 <Cards>
-  <Card title="Team plan" href="/docs/team-and-cost/team-plan" description="Roles, responsibilities, FTE by month, hiring sequence and a lean option." />
-  <Card title="People cost" href="/docs/team-and-cost/people-cost" description="Monthly and total cost by role, US vs India, blended, contractors vs FTE." />
-  <Card title="Infrastructure cost" href="/docs/team-and-cost/infrastructure-cost" description="AWS and Vercel per environment at MVP and growth scale." />
-  <Card title="Vendor & AI cost" href="/docs/team-and-cost/vendor-and-ai-cost" description="Data, intent, outreach and CRM vendors, the Claude usage model and tooling." />
-  <Card title="Total budget" href="/docs/team-and-cost/total-budget" description="Consolidated 6- and 9-month budgets, monthly burn and contingency." />
-  <Card title="Assumptions" href="/docs/team-and-cost/assumptions" description="Every assumption, how to update the model, and what moves the total most." />
+  <Card title="Team plan" href="/docs/team-and-cost/team-plan" description="Who does what by roadmap month, engineer-weeks available, how AI changes throughput, and what this team cannot cover." />
+  <Card title="People cost" href="/docs/team-and-cost/people-cost" description="Per-role monthly and 3-month cost, what CTC covers, employer extras, and contractor rates." />
+  <Card title="Infrastructure cost" href="/docs/team-and-cost/infrastructure-cost" description="Per-service AWS estimate in USD and ₹ for dev, staging and production, lean versus safer options." />
+  <Card title="Vendor & AI cost" href="/docs/team-and-cost/vendor-and-ai-cost" description="Claude Code seats, the product's own LLM cost model with scenarios, data and outreach vendors, and team tooling." />
+  <Card title="Total budget" href="/docs/team-and-cost/total-budget" description="Consolidated low / expected / high, month-by-month burn, contingency and what moves the total most." />
+  <Card title="Assumptions" href="/docs/team-and-cost/assumptions" description="Every numbered assumption behind the budget and how to update the model." />
 </Cards>
+
+## Related
+
+- [Roadmap (3 months)](/docs/roadmap) — what the team delivers month by month
+- [MVP scope](/docs/mvp-scope) — what "done" means in December
+- [Target architecture](/docs/architecture/target-architecture) — what the infrastructure estimate is based on

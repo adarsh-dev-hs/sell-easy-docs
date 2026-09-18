@@ -1,116 +1,138 @@
 ---
 title: Timeline
-description: Month-by-month SellEasy delivery plan with milestones, owning roles, dependencies and a full Gantt chart.
-icon: CalendarRange
+description: Week-by-week plan for the 13 weeks from 5 October to 31 December 2026, with focus, milestones, owners, a full Gantt chart and the critical path.
+icon: Calendar
 ---
 
-The timeline turns the four phases into calendar months. Owners are **roles** (see [Team plan](/docs/team-and-cost/team-plan)); assign names when the team is hired. Dates are planning estimates, and a two-week holiday buffer is built into December–January.
+Thirteen working weeks, three engineers, one fixed launch date. Owners are **roles** — SSE (Senior Software Engineer / tech lead), SE-1 (integrations-leaning), SE-2 (frontend-leaning) — described in [Roadmap overview](/docs/roadmap#who-is-doing-it) and costed in [Team & cost](/docs/team-and-cost/team-plan).
 
-## Month by month
+<Callout type="warn" title="What this timeline assumes">
+All three engineers are in seat on **5 October**, are fluent with AI-assisted development from day one, and are not split across other work. December is planned at reduced capacity for holidays. If any of those is untrue, the scope in the affected weeks is cut rather than the launch date moved — up to the freeze decision on 18 December.
+</Callout>
 
-| Month | Dates | Phase | Key work | Milestones | Owner(s) | Depends on |
-|---|---|---|---|---|---|---|
-| **M1** | Oct 2026 | 1 | Postgres driver; IaC and staging; CI/CD; provider plumbing; auth hardening starts; Claude adapter starts; design-partner outreach | **Staging live** (30 Oct) | Lead eng, Backend 1, DevOps, PM | AWS accounts; lead engineer and backend 1 in seat |
-| **M2** | Nov 2026 | 1 | Migrations and data move; production; observability; SES; enrichment adapter; invite emails; pilot readiness | **Pilot build in production** (27 Nov); pilot gate | Lead eng, Backend 1–2, Integrations, DevOps, ML | SES production access; enrichment vendor sandbox; backend 2 and integrations hired |
-| **M3** | Dec 2026 | 2 | Event bus and agent workers; webhook framework; RB2B; scheduler starts; inbound capture starts; HubSpot app starts | Design partners onboarded (3+) | Lead eng, Backend 1–2, Integrations | RB2B partner access; HubSpot developer app registered |
-| **M4** | Jan 2027 | 2 | Trigify; scheduler, suppression and stats complete; decay job; HubSpot sync complete; instrumentation; pen test; launch hardening | **MVP launch** (5 Feb); MVP gate | Whole team; QA to 1.0 | Pen test vendor booked; 5+ partners active |
-| **M5** | Feb 2027 | 3 | Redis; search; playbook priority; research agent; deliverability; Instantly / Mailpool; notification routing | Paying design partners | Backend 1–2, Integrations, ML, DevOps; GTM joins | Instantly / Mailpool accounts; research data source contracts |
-| **M6** | Mar 2027 | 3 | HeyReach; auto-send guardrails; onboarding; autoscaling and SLOs; data integrity; remove simulation; GA readiness | **GA launch** (2 Apr); GA gate | Whole team | SLOs met 4 weeks; pricing agreed |
-| **M7** | Apr 2027 | 4 | SSO and MFA; audit log; Salesforce starts; Redshift pipeline starts; SOC 2 readiness starts | First enterprise pilot | Backend 1–2, Integrations, Lead eng, DevOps | IdP decision (ADR-12); compliance platform contract |
-| **M8** | May 2027 | 4 | API scopes; Salesforce continues; Attio; billing; attribution starts | Billing in staging | Backend 1–2, Integrations, Frontend, PM | Billing provider account; Salesforce connected app |
-| **M9** | Jun 2027 | 4 | Salesforce complete; attribution and ROI; Fireflies; SOC 2 evidence; enterprise hardening | **Enterprise release** (2 Jul); enterprise gate | Whole team | SOC 2 auditor booked; AppExchange review submitted |
+## Week by week
+
+| Week | Dates | Month | Focus | Milestone | Owner(s) |
+|---|---|---|---|---|---|
+| **W1** | 5–9 Oct | 1 | Kickoff; ADRs (IaC tool, frontend hosting); Postgres schema and driver skeleton; provider factory takes `orgId`; auth hardening plan. **AWS org + SES production request, Anthropic account, vendor outreach** | **Kickoff** (5 Oct) | All three + founder |
+| **W2** | 12–16 Oct | 1 | Postgres driver — core collections and transactions; staging VPC and RDS; Claude adapter and eval harness; webhook signatures and API key scopes. **Domain live, warm-up starts** | Warm-up started (16 Oct); enrichment vendor decided | SSE, SE-1, SE-2 |
+| **W3** | 19–23 Oct | 1 | Remaining collections; JSON → Postgres data-move script; CI running tests on Postgres; enrichment adapter; SES send path; integration settings UI wired up | **Staging live** (23 Oct) | SSE, SE-1, SE-2 |
+| **W4** | 26–30 Oct | 1 | Production environment; Secrets Manager; automated backups + **rehearsed restore**; Sentry, metrics, alerts; bounce handling; invite emails end to end | **Production live** (30 Oct) | SSE, SE-1, SE-2 |
+| **W5** | 3–6 Nov | 2 | Background job runner (Postgres queue, retries, DLQ); intent connector mapping and signature verification; scheduler send windows, mailbox rotation, daily limits | **G1 gate passed** (2 Nov); CRM conflict policy decided (6 Nov) | SSE, SE-1, SE-2 |
+| **W6** | 9–13 Nov | 2 | Scheduler send path on SES with idempotency; intent connector live in staging; HubSpot app, contacts and companies; suppression and unsubscribe | Intent signals flowing in staging | SSE, SE-1, SE-2 |
+| **W7** | 16–20 Nov | 2 | Nightly re-scoring and stat rollups; HubSpot deals and pull sync; reply capture UI and inbox threading; first partner onboarded | **Pilot starts** (16 Nov) | SSE, SE-1, SE-2 + founder |
+| **W8** | 23–27 Nov | 2 | Reply capture backend; bounce and complaint classification; real sequence stats and mailbox health; partners 2 and 3 onboarded; pilot support | Full loop demonstrated on partner data | All three + founder |
+| **W9** | 1–4 Dec | 3 | Adapter rate limits, retries and idempotency keys; deliverability DNS checks, caps and auto-pause; onboarding checklist and empty states | **G2 gate passed** (30 Nov) | SSE, SE-1, SE-2 |
+| **W10** | 7–11 Dec | 3 | Performance profiling, indexes and SQL aggregates; suppression and deliverability panel; customer docs; billing-lite views and entitlement checks | Performance targets met | SSE, SE-1, SE-2 |
+| **W11** | 14–18 Dec | 3 | Security review, dependency and container scanning, authorisation matrix tests; adapter failure states; docs and usage export finished | **Feature freeze** (18 Dec) | SSE, SE-1, SE-2 |
+| **W12** | 21–24 Dec | 3 | Bug burn-down only; runbooks; rollback rehearsal; vendor failure drills; onboarding polish. Reduced capacity — holidays | Rollback rehearsed | All three |
+| **W13** | 28–31 Dec | 3 | Launch checklist sign-off; on-call rota; final deliverability and partner sanity pass; launch-day monitoring watch | **MVP launch / GA** (31 Dec) | All three + founder |
 
 ## Full Gantt
 
 ```mermaid
 gantt
-  title SellEasy 9-month delivery plan
+  title SellEasy 13-week delivery plan
   dateFormat YYYY-MM-DD
-  axisFormat %b %y
+  axisFormat %d %b
   section Platform
-  Postgres driver and migrations        :pf1, 2026-10-05, 2026-11-06
-  IaC CI-CD and observability           :pf2, 2026-10-05, 2026-11-13
-  Auth hardening and invites            :pf3, 2026-10-12, 2026-11-13
-  Event bus and agent workers           :pf4, 2026-11-30, 2027-01-08
-  Redis and OpenSearch                  :pf5, 2027-02-08, 2027-03-12
-  Autoscaling and SLOs                  :pf6, 2027-02-22, 2027-03-19
-  SSO MFA and audit log                 :pf7, 2027-04-05, 2027-05-14
-  API scopes and public API             :pf8, 2027-05-03, 2027-05-28
-  section Intelligence
-  Claude adapter and evals              :ai1, 2026-10-19, 2026-11-20
-  Sentiment and reply suggestions       :ai2, 2026-12-14, 2027-01-29
-  Playbook priority and multi-run       :ai3, 2027-02-08, 2027-03-05
-  Research agent and quality loop       :ai4, 2027-02-08, 2027-03-26
-  Meeting summaries and ICP feedback    :ai5, 2027-06-01, 2027-06-25
-  section Integrations
-  Enrichment vendor                     :in1, 2026-11-02, 2026-11-27
-  SES sending                           :in2, 2026-10-26, 2026-11-20
-  RB2B and Trigify webhooks             :in3, 2026-11-30, 2027-01-22
-  HubSpot two-way sync                  :in4, 2026-12-14, 2027-02-05
-  Instantly Mailpool HeyReach           :in5, 2027-02-15, 2027-03-26
-  Salesforce                            :in6, 2027-04-05, 2027-06-04
-  Attio                                 :in7, 2027-05-17, 2027-06-11
-  Fireflies                             :in8, 2027-06-01, 2027-06-25
-  section Engagement
-  Sequence scheduler and suppression    :en1, 2026-12-07, 2027-01-22
-  Inbound reply capture and stats       :en2, 2026-12-14, 2027-01-29
-  Deliverability and guardrails         :en3, 2027-02-08, 2027-03-12
-  Notification routing                  :en4, 2027-02-22, 2027-03-05
-  section Insights and commercial
-  MVP instrumentation and scorecard     :ic1, 2026-11-09, 2027-01-29
-  Redshift and attribution              :ic2, 2027-04-19, 2027-06-25
-  Billing and plans                     :ic3, 2027-05-03, 2027-06-11
-  SOC 2 readiness                       :ic4, 2027-04-19, 2027-07-02
+  Postgres driver and migrations        :pf1, 2026-10-05, 2026-10-23
+  AWS staging and production            :pf2, 2026-10-05, 2026-10-30
+  CI-CD secrets and backups             :pf3, 2026-10-12, 2026-10-30
+  Observability and alerting            :pf4, 2026-10-19, 2026-10-30
+  Background job runner                 :pf5, 2026-11-03, 2026-11-13
+  Performance pass                      :pf6, 2026-12-07, 2026-12-18
+  section Security
+  Auth hardening and API key scopes     :se1, 2026-10-12, 2026-11-02
+  Adapter rate limits and idempotency   :se2, 2026-12-01, 2026-12-11
+  Security review and hardening         :se3, 2026-12-07, 2026-12-18
+  section Adapters
+  Claude drafting adapter               :ad1, 2026-10-12, 2026-10-23
+  Enrichment vendor adapter             :ad2, 2026-10-19, 2026-10-30
+  SES sending and invite emails         :ad3, 2026-10-19, 2026-11-02
+  Intent webhook connector              :ad4, 2026-11-03, 2026-11-13
+  HubSpot two-way sync                  :ad5, 2026-11-09, 2026-11-27
+  section Outreach
+  Sequence scheduler and sending engine :ou1, 2026-11-03, 2026-11-20
+  Inbound reply capture                 :ou2, 2026-11-16, 2026-11-27
+  Sequence stats and mailbox health     :ou3, 2026-11-16, 2026-11-27
+  Deliverability controls               :ou4, 2026-12-01, 2026-12-11
+  section Launch readiness
+  Onboarding and in-product guidance    :lr1, 2026-12-01, 2026-12-18
+  Customer documentation                :lr2, 2026-12-01, 2026-12-18
+  Billing-lite and usage export         :lr3, 2026-12-07, 2026-12-18
+  Bug burn-down                         :lr4, 2026-12-01, 2026-12-31
+  Runbooks rollback and on-call         :lr5, 2026-12-14, 2026-12-31
   section Go to market
-  Design partner recruiting             :gt1, 2026-10-05, 2026-11-27
-  Pilot with design partners            :gt2, 2026-11-30, 2027-02-05
-  Self-serve onboarding and GA prep     :gt3, 2027-02-22, 2027-04-02
-  Enterprise pilots                     :gt4, 2027-04-05, 2027-07-02
+  Vendor contracts and API keys         :gt1, 2026-10-05, 2026-11-06
+  Domain and mailbox warm-up            :gt2, 2026-10-12, 2026-11-27
+  Design partner recruiting             :gt3, 2026-10-05, 2026-10-30
+  Design partner pilot                  :gt4, 2026-11-16, 2026-12-18
   section Milestones
-  Staging live                          :milestone, 2026-10-30, 0d
-  Pilot build in production             :milestone, 2026-11-27, 0d
-  MVP launch                            :milestone, 2027-02-05, 0d
-  GA launch                             :milestone, 2027-04-02, 0d
-  Enterprise release                    :milestone, 2027-07-02, 0d
+  Kickoff                               :milestone, 2026-10-05, 0d
+  Staging live                          :milestone, 2026-10-23, 0d
+  Production live                       :milestone, 2026-10-30, 0d
+  Gate G1 production                    :milestone, 2026-11-02, 0d
+  Pilot starts                          :milestone, 2026-11-16, 0d
+  Gate G2 pilot                         :milestone, 2026-11-30, 0d
+  Feature freeze                        :milestone, 2026-12-18, 0d
+  MVP launch and GA                     :milestone, 2026-12-31, 0d
 ```
 
 ## Milestones
 
-| Milestone | Target date | Definition | Accountable |
+| Milestone | Date | Definition | Accountable |
 |---|---|---|---|
-| Kickoff | 5 Oct 2026 | Team in place for Phase 1 (at least lead engineer, backend 1, frontend, PM) | Founders |
-| Staging live | 30 Oct 2026 | Staging on AWS with Postgres, deployed by CI | Lead engineer |
-| Pilot build in production | 27 Nov 2026 | [Phase 1 exit criteria](/docs/roadmap/phase-1-foundation#exit-criteria-pilot-gate) met | Lead engineer + PM |
-| MVP launch | 5 Feb 2027 | [Phase 2 exit criteria](/docs/roadmap/phase-2-real-integrations#exit-criteria-mvp-launch-gate) met | PM |
-| GA launch | 2 Apr 2027 | [Phase 3 exit criteria](/docs/roadmap/phase-3-scale-and-intelligence#exit-criteria-ga-gate) met | Founders + PM |
-| Enterprise release | 2 Jul 2027 | [Phase 4 exit criteria](/docs/roadmap/phase-4-enterprise-and-analytics#exit-criteria-enterprise-gate) met | Founders + lead engineer |
+| **Kickoff** | Mon 5 Oct 2026 | All three engineers in seat; AWS and Anthropic accounts open; SES production access requested; IaC and hosting decisions made | Founder |
+| **Warm-up started** | Fri 16 Oct 2026 | Sending domain registered with SPF, DKIM and DMARC; mailboxes created and on a warm-up schedule | SSE |
+| **Staging live** | Fri 23 Oct 2026 | Staging on AWS running Postgres, deployed by CI | SSE |
+| **Production live** | Fri 30 Oct 2026 | Production on AWS running Postgres, with secrets, backups and monitoring | SSE |
+| **G1 · Production gate** | Mon 2 Nov 2026 | [Month 1 exit criteria](/docs/roadmap/month-1-foundation#exit-criteria-g1--production-gate-2-november) met | Founder + SSE |
+| **Pilot starts** | Mon 16 Nov 2026 | First design partner live on their own data in production | Founder |
+| **G2 · Pilot gate** | Mon 30 Nov 2026 | [Month 2 exit criteria](/docs/roadmap/month-2-integrations#exit-criteria-g2--pilot-gate-30-november) met; full loop proven on partner data | Founder + SSE |
+| **Feature freeze** | Fri 18 Dec 2026 | No new functionality merged; burn-down and launch readiness only. The slip-or-launch decision is made here | Founder |
+| **MVP launch / GA** | Thu 31 Dec 2026 | [Month 3 exit criteria](/docs/roadmap/month-3-launch#exit-criteria-g3--launch-gate-31-december) and every gate in the [launch checklist](/docs/mvp-scope/launch-checklist) signed off | Founder |
+
+## Capacity reality check
+
+| Month | Calendar weeks | Realistic engineer-weeks (3 people) | Notes |
+|---|---|---|---|
+| 1 · Foundation | 4 | ~12 | Full capacity; week 1 partly consumed by setup and accounts |
+| 2 · Integrations | 4 | ~11 | Pilot support from week 7 takes roughly 15% of capacity |
+| 3 · Launch | 4.5 | ~9 | Holidays in weeks 12–13; burn-down, not build |
+| **Total** | **13** | **~32 engineer-weeks** | Everything in the plan has to fit inside this number |
+
+That last number is the whole argument for the deferral list in [Beyond the MVP](/docs/roadmap/beyond-the-mvp). Roughly 32 engineer-weeks, AI-assisted, is enough to replace the mocks and close the loop. It is not enough to also build queues, a cache, search, SSO, a second CRM and a warehouse.
 
 ## Critical path
 
 ```mermaid
 flowchart LR
-  a["Hire lead + backend 1<br/>(before M1)"] --> b["Postgres driver"]
-  b --> c["Production on AWS"]
-  c --> d["Pilot build"]
-  e["SES production access"] --> f["SES adapter"]
-  f --> g["Sequence scheduler"]
-  g --> h["Reply capture"]
-  i["HubSpot app registered"] --> j["HubSpot sync"]
-  k["RB2B access"] --> l["RB2B connector"]
-  d --> m["MVP launch"]
-  h --> m
-  j --> m
-  l --> m
-  m --> n["Redis · OpenSearch · autoscaling"]
-  n --> o["GA launch"]
-  o --> p["SSO · Salesforce · Redshift · billing"]
-  p --> q["Enterprise release"]
+  a["Postgres driver<br/>W1-W3"] --> b["Production on AWS<br/>W4"]
+  b --> c["G1 gate<br/>2 Nov"]
+  s["SES production access<br/>requested W1"] --> d["SES adapter<br/>W3-W4"]
+  d --> e["Sequence scheduler<br/>W5-W7"]
+  w["Domain warm-up<br/>W2-W8"] --> e
+  c --> e
+  v["Intent vendor access<br/>chased W1-W4"] --> f["Intent connector<br/>W5-W6"]
+  h["HubSpot app<br/>W5"] --> g["HubSpot sync<br/>W6-W8"]
+  e --> i["Reply capture<br/>W7-W8"]
+  f --> j["Pilot on real data<br/>W7-W8"]
+  g --> j
+  i --> j
+  j --> k["G2 gate<br/>30 Nov"]
+  k --> l["Harden<br/>W9-W11"]
+  l --> m["Feature freeze<br/>18 Dec"]
+  m --> n["Launch<br/>31 Dec"]
 ```
 
-Slippage on any node of this chain moves the MVP launch. Items off the chain (Trigify, second enrichment vendor, Bombora) can slip without moving it.
+Anything on this chain that slips moves the launch date. Items **off** the chain can slip without moving it: the enrichment adapter, the integration settings UI, sequence-stat polish, billing-lite and most of the customer documentation.
+
+The two least-compressible nodes are **domain warm-up** (calendar time, not effort) and **SES production access** (an external review). Both are week-1 actions for exactly that reason.
 
 ## Related
 
 - [Roadmap overview](/docs/roadmap)
+- [Month 1 · Foundation](/docs/roadmap/month-1-foundation) · [Month 2 · Real integrations](/docs/roadmap/month-2-integrations) · [Month 3 · Harden & launch](/docs/roadmap/month-3-launch)
 - [Dependencies & risks](/docs/roadmap/dependencies-and-risks)
-- [Total budget → month-by-month burn](/docs/team-and-cost/total-budget#month-by-month-burn)
+- [Team & cost → team plan](/docs/team-and-cost/team-plan)

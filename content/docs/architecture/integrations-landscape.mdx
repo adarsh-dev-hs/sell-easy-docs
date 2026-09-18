@@ -80,7 +80,7 @@ flowchart LR
 | CRM | **Attio** | Records and lists | Both | OAuth 2.0 or API key, webhooks | 🟡 Mock | P3 | 4 |
 | Calls | **Fireflies.ai** | Call transcripts, summaries | In (+ push summaries to CRM) | API key (GraphQL), webhooks | ⛔ Not built | P3 | 4 |
 
-Non-catalog services used by the platform itself: **Slack** incoming webhook (live in production), **Sentry** and **Datadog** (planned), **Vercel** (demo hosting), **Stripe** or similar for billing (Phase 4, to be decided).
+Non-catalog services used by the platform itself: **Slack** incoming webhook (live in production), **Sentry** and **Datadog** (planned), **Vercel** (demo hosting), **Stripe** or similar for billing ([post-launch](/docs/roadmap/beyond-the-mvp#theme-3--commercial), to be decided).
 
 ## How customers connect (credential model)
 
@@ -96,22 +96,22 @@ See [Vendor & AI cost](/docs/team-and-cost/vendor-and-ai-cost) for price ranges 
 
 <Steps>
 <Step>
-**Claude drafting (Phase 1).** The most visible gap: the UI already says "Draft outreach with Claude". Platform-owned, no customer setup, easy to demo.
+**Claude drafting ([Month 1](/docs/roadmap/month-1-foundation)).** The most visible gap: the UI already says "Draft outreach with Claude". Platform-owned, no customer setup, easy to demo.
 </Step>
 <Step>
-**One enrichment vendor + SES (Phase 1).** Pilot customers need real firmographics and must be able to send. SES is also needed for invite emails.
+**One enrichment vendor + SES (Month 1).** Pilot customers need real firmographics and must be able to send. SES is also needed for invite emails.
 </Step>
 <Step>
-**RB2B webhook + HubSpot (Phase 2).** One real intent source proves the signal loop. HubSpot is the most common CRM among the target mid-market customers.
+**One intent webhook + HubSpot ([Month 2](/docs/roadmap/month-2-integrations)).** One real intent source proves the signal loop. HubSpot is the most common CRM among the target mid-market customers.
 </Step>
 <Step>
-**Trigify, Bombora, second enrichment vendor (Phase 2).** Broadens signal coverage and completes the waterfall.
+**Trigify (if RB2B shipped first), Bombora, second enrichment vendor ([post-launch](/docs/roadmap/beyond-the-mvp#theme-2--integration-breadth)).** Broadens signal coverage and completes the waterfall.
 </Step>
 <Step>
-**Instantly / Mailpool, HeyReach, Apify, Linkup (Phase 3).** Volume sending, LinkedIn and research for GA.
+**Instantly / Mailpool, HeyReach, Apify, Linkup (post-launch).** Volume sending, LinkedIn and research for GA.
 </Step>
 <Step>
-**Salesforce, Attio, Fireflies, Limadata (Phase 4).** Enterprise CRM and call intelligence.
+**Salesforce, Attio, Fireflies, Limadata (post-launch).** Enterprise CRM and call intelligence.
 </Step>
 </Steps>
 

@@ -63,25 +63,25 @@ flowchart TB
 
 ## Scaling path
 
-The table below gives indicative sizing. Cost for each stage is in [Infrastructure cost](/docs/team-and-cost/infrastructure-cost).
+The table below gives indicative sizing. Only the **Pilot** row is inside the three-month plan; everything below it is [post-launch](/docs/roadmap/beyond-the-mvp) and is sized here so the growth path is visible, not so it gets built. Cost for each stage is in [Infrastructure cost](/docs/team-and-cost/infrastructure-cost).
 
 | Stage | Workload (assumed) | API / workers | Database | Cache / search | Notes |
 |---|---|---|---|---|---|
-| **Pilot** (Phase 1–2) | ≤ 20 workspaces, ≤ 100 users, ~50k signals and ~20k emails per month | 2 small API tasks, 1 worker | `db.t4g.medium` Multi-AZ | Redis optional; no OpenSearch | Single region. Keep JSON mode only for local and demo. |
-| **GA** (Phase 3) | ~50–100 workspaces, ~500 users, ~500k signals and ~250k emails per month | 2–4 API tasks, 2–4 workers with queue-depth autoscaling | `db.t4g.large` or `db.r6g.large` | Small Redis; 2-node OpenSearch | Add read replica if analytics load grows |
-| **Growth** (Phase 4+) | ~200 workspaces, ~2,000 users, ~2M signals and ~1M emails per month | 4–6 API tasks, 4–8 workers | `db.r6g.large` Multi-AZ + read replica | Redis with replica; 3-node OpenSearch | Redshift Serverless; consider extracting signal ingestion |
-| **Scale** (beyond this plan) | 1,000+ workspaces | Split ingestion and agent into separate services | Partitioning by `org_id`, or Aurora | Dedicated clusters | Multi-region, data residency (EU) |
+| **Pilot** (Months 1–2, and the MVP launch) | ≤ 20 workspaces, ≤ 100 users, ~50k signals and ~20k emails per month | 2 small API tasks, 1 worker | `db.t4g.medium` Multi-AZ | Redis optional; no OpenSearch | Single region. Keep JSON mode only for local and demo. |
+| **Scale-up** (post-launch, 2027) | ~50–100 workspaces, ~500 users, ~500k signals and ~250k emails per month | 2–4 API tasks, 2–4 workers with queue-depth autoscaling | `db.t4g.large` or `db.r6g.large` | Small Redis; 2-node OpenSearch | Add read replica if analytics load grows |
+| **Growth** (post-launch, later) | ~200 workspaces, ~2,000 users, ~2M signals and ~1M emails per month | 4–6 API tasks, 4–8 workers | `db.r6g.large` Multi-AZ + read replica | Redis with replica; 3-node OpenSearch | Redshift Serverless; consider extracting signal ingestion |
+| **Scale** (well beyond this plan) | 1,000+ workspaces | Split ingestion and agent into separate services | Partitioning by `org_id`, or Aurora | Dedicated clusters | Multi-region, data residency (EU) |
 
 ## Principles for the migration
 
 1. **One switch at a time.** Each driver ships behind its env flag, runs in staging first, and keeps the mock or memory implementation for local work and demos.
 2. **Stateless API first.** Postgres unlocks more than one API task, which in turn unlocks zero-downtime deploys. Do this before anything else.
-3. **Queue before scale.** Moving the agent onto SQS protects the API from vendor and LLM latency. Do it before signal volume grows.
+3. **Queue before scale.** The MVP uses a Postgres-backed job runner; moving the agent onto SQS protects the API from vendor and LLM latency. Do it when signal volume grows, not before ([Beyond the MVP](/docs/roadmap/beyond-the-mvp#theme-1--reliability-and-scale)).
 4. **Measure before caching.** Add Redis and OpenSearch when dashboards or search miss their latency targets, not before.
 5. **Keep mock mode working.** `npm run mock:check` in CI keeps the stakeholder demo in step with the backend.
 
 ## Related
 
 - [Engineering → Architecture → scalability path](/docs/engineering/architecture#scalability-path)
-- [Roadmap](/docs/roadmap)
+- [Roadmap (3 months)](/docs/roadmap)
 - [Decisions](/docs/architecture/decisions)

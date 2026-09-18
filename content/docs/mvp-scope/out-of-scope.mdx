@@ -10,26 +10,33 @@ Deferring work is a decision, not an omission. Each item below was left out of t
 
 | Capability | Why it is deferred | Planned | Workaround in the MVP |
 |---|---|---|---|
-| **Salesforce and Attio sync** | Salesforce needs a connected app, AppExchange security review and complex object mapping; MVP targets HubSpot users | [Phase 4](/docs/roadmap/phase-4-enterprise-and-analytics) | Deal CSV export |
-| **Enterprise SSO (SAML / OIDC), MFA** | Not needed by mid-market design partners; managed IdP choice still open | Phase 4 | Strong passwords, short sessions |
-| **Audit log** | Entity versions cover most needs for pilots | Phase 4 | Entity version history, activity timeline |
-| **Billing, plans and usage metering** | Pilots run on contracts or invoices; pricing still being validated | Phase 4 | Manual invoicing; seat limits already enforced |
-| **SOC 2 report** | Takes months of evidence; pilots accept a security questionnaire | Phase 4 (readiness) | Security overview document, DPA |
-| **Redshift warehouse, historical snapshots** | Operational analytics are enough for pilot volumes | Phase 4 | Built-in analytics; CSV export |
-| **Call intelligence (Fireflies)** | Not needed to prove the signal → meeting loop | Phase 4 | None |
-| **LinkedIn automation (HeyReach)** | Account-safety risk and extra vendor; email proves the loop first | [Phase 3](/docs/roadmap/phase-3-scale-and-intelligence) | LinkedIn steps stay as manual tasks |
-| **Instantly / Mailpool, warm-up networks** | SES covers pilot volumes; cold-email scale is a GA concern | Phase 3 | SES with conservative daily limits |
-| **Bombora topic surge** | Enterprise contract with long lead time | [Phase 2](/docs/roadmap/phase-2-real-integrations) (Could) or Phase 3 | RB2B and Trigify signals |
-| **Apify / Linkup scraping and research agent** | Research quality needs evaluation work; not required for first drafts | Phase 3 | Signal context in drafts |
-| **Multiple playbooks per signal, playbook priority UI** | Product decision still open | Phase 3 | Keep playbooks mutually exclusive |
-| **Multiple ICPs / segments** | Pilots have one motion each | Phase 3+ | One ICP per workspace |
-| **Fully autonomous auto-send at scale** | Needs guardrails (caps, allow-lists, sentiment checks) | Phase 3 | Approval on by default; auto-send per playbook only with caps |
-| **OpenSearch** | Substring or Postgres search is fine at pilot scale | Phase 3 | Existing ⌘K search |
+| **Salesforce and Attio sync** | Salesforce needs a connected app, AppExchange security review and complex object mapping; MVP targets HubSpot users | [Post-launch](/docs/roadmap/beyond-the-mvp#theme-2--integration-breadth) | Deal CSV export |
+| **Enterprise SSO (SAML / OIDC), MFA** | Not needed by mid-market design partners; managed IdP choice still open | [Post-launch](/docs/roadmap/beyond-the-mvp#theme-4--enterprise-trust) | Strong passwords, short sessions, hardened auth in [Month 1](/docs/roadmap/month-1-foundation) |
+| **Audit log** | Entity versions cover most needs for pilots | Post-launch | Entity version history, activity timeline |
+| **Billing, plans and usage metering** | Pilots run on contracts or invoices; pricing still being validated | Post-launch | **Billing-lite** in [Month 3](/docs/roadmap/month-3-launch): seat enforcement, usage export, manual invoicing |
+| **SOC 2 report** | Takes months of evidence; pilots accept a security questionnaire | Post-launch | Internal security review in Month 3, security overview document, DPA; external pen test booked for Q1 2027 |
+| **Redshift warehouse, historical snapshots** | Operational analytics are enough for pilot volumes | Post-launch | Built-in analytics; CSV export |
+| **Call intelligence (Fireflies)** | Not needed to prove the signal → meeting loop | Post-launch | None |
+| **LinkedIn automation (HeyReach)** | Account-safety risk and extra vendor; email proves the loop first | [Post-launch](/docs/roadmap/beyond-the-mvp#theme-2--integration-breadth) | LinkedIn steps stay as manual tasks |
+| **Instantly / Mailpool, warm-up networks** | SES covers pilot volumes; cold-email scale is a post-launch concern | Post-launch | SES with conservative daily limits and warm-up started in [Month 1](/docs/roadmap/month-1-foundation) |
+| **Bombora topic surge** | Enterprise data agreement with a 4–12 week lead time — longer than the whole plan | Post-launch | The one intent connector shipped in [Month 2](/docs/roadmap/month-2-integrations) |
+| **Second intent source and second enrichment vendor** | One of each proves the loop; breadth is an optimisation | Post-launch | One intent connector (RB2B **or** Trigify) and one enrichment vendor |
+| **EventBridge + SQS asynchronous agent execution** | A month of work; a Postgres-backed job runner is enough below pilot volume | [Post-launch](/docs/roadmap/beyond-the-mvp#theme-1--reliability-and-scale) | Scheduled background job runner in Month 2 |
+| **Redis cache** | Postgres indexes and SQL aggregates meet the latency targets at pilot volumes | Post-launch | Performance pass in [Month 3](/docs/roadmap/month-3-launch) |
+| **Apify / Linkup scraping and research agent** | Research quality needs evaluation work; not required for first drafts | Post-launch | Signal context in drafts |
+| **Multiple playbooks per signal, playbook priority UI** | Product decision still open | Post-launch | Keep playbooks mutually exclusive; first match wins |
+| **Multiple ICPs / segments** | Pilots have one motion each | Post-launch | One ICP per workspace |
+| **Fully autonomous auto-send at scale** | Needs guardrails (caps, allow-lists, sentiment checks) | Post-launch | Approval on by default; auto-send per playbook only with caps |
+| **OpenSearch** | Postgres trigram search is fine at pilot scale | Post-launch | Trigram search added in Month 3; existing ⌘K search |
+| **Self-serve onboarding at scale** | Design partners are onboarded by hand for three months | Post-launch | Guided setup checklist shipped in Month 3 |
+| **Notification preference routing** | Shared feed plus a Slack webhook is acceptable for three pilots | Post-launch | Shared workspace feed |
 | **Mobile apps** | Reps work at a desk; responsive web is enough | Not planned | Responsive web |
-| **EU data residency, multi-region** | North America first | Beyond this plan | — |
-| **Public API beyond the signals webhook** | Scopes exist but are not enforced on other routes | Phase 4 | Signals webhook; CSV import and export |
-| **Service extraction (microservices)** | Not needed at MVP scale | Beyond this plan | Modular monolith ([ADR-01](/docs/architecture/decisions#adr-01--modular-monolith-with-service-shaped-modules)) |
-| **Simulate signal in production** | Demo helper only | Removed before launch | Stakeholder demo keeps it in mock mode |
+| **EU data residency, multi-region** | North America first | Post-launch, contract-driven | — |
+| **Public API beyond the signals webhook** | Scopes exist but are not enforced on other routes | Post-launch | Signals webhook; CSV import and export |
+| **Service extraction (microservices)** | Not needed at MVP scale | Not planned | Modular monolith ([ADR-01](/docs/architecture/decisions#adr-01--modular-monolith-with-service-shaped-modules)) |
+| **Simulate signal in production** | Demo helper only | Removed in [Month 2](/docs/roadmap/month-2-integrations) | Stakeholder demo keeps it in mock mode |
+
+Sizing and the trigger that would pull each of these forward are in [Beyond the MVP](/docs/roadmap/beyond-the-mvp).
 
 ## Non-goals (not planned at all)
 

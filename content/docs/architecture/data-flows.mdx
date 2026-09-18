@@ -124,7 +124,7 @@ flowchart LR
 ```
 
 - **Today:** enrollment, inbox, sentiment labels and "book meeting" are built. Nothing is sent, steps never advance, and inbox messages come from seed data.
-- **Target:** this is the largest single build in [Phase 2](/docs/roadmap/phase-2-real-integrations). Deliverability tooling (warm-up, DNS checks, health from real bounce data) follows in [Phase 3](/docs/roadmap/phase-3-scale-and-intelligence).
+- **Target:** this is the largest single build in [Month 2](/docs/roadmap/month-2-integrations). Deliverability tooling (DNS checks, caps, health from real bounce data) follows in [Month 3](/docs/roadmap/month-3-launch); warm-up networks and volume-sending vendors are [post-launch](/docs/roadmap/beyond-the-mvp).
 
 ## 5 · Deal → CRM sync
 
@@ -148,7 +148,7 @@ sequenceDiagram
 ```
 
 - **Today:** "Sync to CRM" requires a connected CRM entry and writes a fake CRM id. It is push-only and manual.
-- **Target:** automatic two-way sync, starting with HubSpot. Attio and Salesforce follow in [Phase 4](/docs/roadmap/phase-4-enterprise-and-analytics). Which system owns a deal is an open product decision ([Product roadmap & status](/docs/product/roadmap#open-questions)).
+- **Target:** automatic two-way sync with HubSpot in [Month 2](/docs/roadmap/month-2-integrations). Attio and Salesforce are [post-launch](/docs/roadmap/beyond-the-mvp#theme-2--integration-breadth). Which system owns a deal is an open product decision, due 6 November 2026 ([Product roadmap & status](/docs/product/roadmap#open-questions)).
 
 ## 6 · Analytics aggregation
 
@@ -170,8 +170,8 @@ flowchart LR
 ```
 
 - **Today:** correct but computed on each request, so dashboards slow down as data grows.
-- **Phase 3:** Redis caches the heavy aggregates, and SQL aggregates replace in-memory scans.
-- **Phase 4:** a Redshift warehouse adds history, custom ranges, attribution and the agent-influenced pipeline metric.
+- **Month 3:** SQL aggregates and indexes replace the in-memory scans, targeting a dashboard p95 under 2 seconds.
+- **Post-launch:** Redis caches the heavy aggregates if the targets are missed, and a Redshift warehouse adds history, custom ranges, attribution and the agent-influenced pipeline metric ([Beyond the MVP](/docs/roadmap/beyond-the-mvp#theme-6--analytics-and-attribution)).
 
 ## Related
 

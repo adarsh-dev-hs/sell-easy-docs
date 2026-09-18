@@ -68,7 +68,7 @@ This log records the decisions that shape SellEasy's architecture and roadmap. E
 **Consequences.**
 - ✅ Zero-setup development and inspectable data.
 - ⚠️ Single process only, no transactions, whole-file rewrites. **Not suitable for production at any real scale.**
-- ➡️ PostgreSQL driver is the first epic of [Phase 1](/docs/roadmap/phase-1-foundation). JSON stays for local work and the browser mock.
+- ➡️ PostgreSQL driver is the first epic of [Month 1](/docs/roadmap/month-1-foundation). JSON stays for local work and the browser mock.
 
 ## ADR-05 · In-browser mock data mode for demos
 
@@ -114,7 +114,7 @@ This log records the decisions that shape SellEasy's architecture and roadmap. E
 **Consequences.**
 - ✅ Deterministic tests and UI.
 - ⚠️ Ingest latency includes scoring, the LLM call and every action; batches are processed serially.
-- ➡️ Move to EventBridge + SQS workers in [Phase 2](/docs/roadmap/phase-2-real-integrations), before real LLM calls hit high volume.
+- ➡️ The MVP ships a Postgres-backed job runner in [Month 2](/docs/roadmap/month-2-integrations) for scheduled sending and re-scoring. Moving to EventBridge + SQS workers is [post-launch](/docs/roadmap/beyond-the-mvp#theme-1--reliability-and-scale), triggered by volume.
 
 ## ADR-09 · Deterministic, explainable scoring
 
@@ -124,7 +124,7 @@ This log records the decisions that shape SellEasy's architecture and roadmap. E
 
 **Consequences.**
 - ✅ Trust, auditability and a fast preview.
-- ⚠️ Less adaptive than a learned model; ICP tuning is manual until feedback loops exist (Phase 4).
+- ⚠️ Less adaptive than a learned model; ICP tuning is manual until outcome feedback loops exist ([post-launch](/docs/roadmap/beyond-the-mvp#theme-5--intelligence)).
 
 ## ADR-10 · AWS as the target cloud; PostgreSQL as the system of record
 
@@ -142,13 +142,13 @@ This log records the decisions that shape SellEasy's architecture and roadmap. E
 
 **Proposal.** HubSpot is the first CRM (mid-market fit, free developer accounts, OAuth app model). SES is the first sender (already on AWS; also serves invites). Instantly or Mailpool follow for cold-email volume and warm-up.
 
-**Consequences if accepted.** Salesforce-only prospects wait until Phase 4. Cold-email deliverability at volume depends on Phase 3.
+**Consequences if accepted.** Salesforce-only prospects are out of the MVP's reach and wait for the [post-launch backlog](/docs/roadmap/beyond-the-mvp#theme-2--integration-breadth). Cold-email deliverability at volume depends on warm-up started in Month 1 and the controls shipped in [Month 3](/docs/roadmap/month-3-launch).
 
 ## ADR-12 · Managed identity provider for SSO (proposed)
 
 **Context.** Enterprise buyers require SAML/OIDC SSO, MFA and audit trails.
 
-**Proposal.** Keep local auth for self-serve, and add a managed IdP (Cognito, or Auth0 if broader enterprise federation is needed) behind `AUTH_DRIVER`. Decide in Phase 3 based on pilot customer requirements and cost per MAU.
+**Proposal.** Keep local auth for self-serve, and add a managed IdP (Cognito, or Auth0 if broader enterprise federation is needed) behind `AUTH_DRIVER`. Not in the three-month plan: local auth is hardened in [Month 1](/docs/roadmap/month-1-foundation) and the managed IdP is decided post-launch, when a deal actually requires SSO, based on cost per MAU.
 
 **Consequences if accepted.** Faster SSO and less security surface to own; some vendor lock-in and per-MAU cost.
 
@@ -156,10 +156,12 @@ This log records the decisions that shape SellEasy's architecture and roadmap. E
 
 | Topic | Options | Decide by | Owner |
 |---|---|---|---|
-| Who owns a deal after two-way CRM sync | CRM wins · SellEasy wins · most recent wins | Phase 2 start | PM + lead engineer |
-| Multi-playbook execution | First match · all matches · priority with stop flag | Phase 3 start | PM |
-| Frontend hosting in production | Vercel · CloudFront + S3 | Phase 1 | Lead engineer + DevOps |
-| Warehouse | Redshift Serverless · Snowflake | Phase 4 start | Lead engineer |
-| Billing provider and pricing model | Seats · seats + usage credits | Phase 3 | Founders + PM |
+| Infrastructure-as-code tool | Terraform · CDK | **7 Oct 2026** | SSE |
+| First intent vendor | RB2B · Trigify | **30 Oct 2026** | Founder + SSE |
+| Who owns a deal after two-way CRM sync | CRM wins · SellEasy wins · most recent wins | **6 Nov 2026** | Founder + SSE |
+| Multi-playbook execution | First match · all matches · priority with stop flag | Post-launch (first match wins at GA) | Founder |
+| Frontend hosting in production | Vercel · CloudFront + S3 | **9 Oct 2026** | SSE |
+| Warehouse | Redshift Serverless · Snowflake | Post-launch | SSE |
+| Billing provider and pricing model | Seats · seats + usage credits | **4 Dec 2026** for the launch approach (billing-lite); provider post-launch | Founder |
 
-More open product questions: [Product → Roadmap & status](/docs/product/roadmap#open-questions).
+Dates come from the delivery plan; the full list with defaults is in [Roadmap → Dependencies & risks](/docs/roadmap/dependencies-and-risks#decisions-with-dates). More open product questions: [Product → Roadmap & status](/docs/product/roadmap#open-questions).

@@ -4,10 +4,10 @@ description: What is live, mocked or not built in SellEasy today, known limitati
 icon: Map
 ---
 
-This page is the **feature status** view: what works today, what is mocked, and what the current build can't do yet. The delivery plan — phases, dates, team and budget — lives in its own tabs:
+This page is the **feature status** view: what works today, what is mocked, and what the current build can't do yet. The delivery plan — the three months to launch, dates, team and budget — lives in its own tabs:
 
 <Cards>
-  <Card title="Roadmap (6–9 months)" href="/docs/roadmap" description="Phases, timeline, dependencies and go / no-go gates." />
+  <Card title="Roadmap (3 months)" href="/docs/roadmap" description="The three-month plan to launch: months, timeline, dependencies and go / no-go gates." />
   <Card title="MVP scope" href="/docs/mvp-scope" description="What the first customer-ready release includes, and how we know it's done." />
   <Card title="Product architecture" href="/docs/architecture" description="Capability maturity, data flows and the target platform." />
   <Card title="Team & cost" href="/docs/team-and-cost" description="Who is needed and what it costs." />
@@ -32,25 +32,25 @@ Since then, the frontend has gained a **mock data mode** (`NEXT_PUBLIC_DATA_SOUR
 
 | Area | Status | Planned in |
 |---|---|---|
-| Accounts, contacts, dedup, merge, versioning, import | ✅ Live (JSON storage) | Postgres in [Phase 1](/docs/roadmap/phase-1-foundation) |
-| Scoring engine, ICP editor, live preview | ✅ Live | Scheduled decay in [Phase 2](/docs/roadmap/phase-2-real-integrations) |
-| Signal ingestion (UI, generic webhook, Simulate) | ✅ Live | Native RB2B / Trigify / Bombora in Phase 2 |
-| Orchestration agent, playbooks, approvals | ✅ Live (synchronous) | Queue workers in Phase 2; priority and multi-playbook in [Phase 3](/docs/roadmap/phase-3-scale-and-intelligence) |
+| Accounts, contacts, dedup, merge, versioning, import | ✅ Live (JSON storage) | Postgres in [Month 1](/docs/roadmap/month-1-foundation) |
+| Scoring engine, ICP editor, live preview | ✅ Live | Scheduled decay in [Month 2](/docs/roadmap/month-2-integrations) |
+| Signal ingestion (UI, generic webhook, Simulate) | ✅ Live | One native intent connector (RB2B **or** Trigify) in Month 2; the rest [post-launch](/docs/roadmap/beyond-the-mvp) |
+| Orchestration agent, playbooks, approvals | ✅ Live (synchronous) | Scheduled background jobs in Month 2; queue workers, priority and multi-playbook [post-launch](/docs/roadmap/beyond-the-mvp) |
 | Pipeline board, stage rules, closed-won effects | ✅ Live | — |
-| Dashboard and analytics | ✅ Live (computed per request) | Redis in Phase 3; warehouse in [Phase 4](/docs/roadmap/phase-4-enterprise-and-analytics) |
-| Team, roles, API keys, plans and seats | ✅ Live (no billing) | Billing, SSO, audit log in Phase 4 |
-| Enrichment and email verification | 🟡 Mock | First vendor in Phase 1 |
-| LLM drafting and AI reply suggestions | 🟡 Mock | Claude in Phase 1 |
-| Email sending | 🟡 Mock | SES in Phase 1; Instantly / Mailpool in Phase 3 |
-| CRM push | 🟡 Mock | HubSpot in Phase 2; Salesforce and Attio in Phase 4 |
+| Dashboard and analytics | ✅ Live (computed per request) | SQL aggregates and indexes in [Month 3](/docs/roadmap/month-3-launch); Redis and a warehouse [post-launch](/docs/roadmap/beyond-the-mvp) |
+| Team, roles, API keys, plans and seats | ✅ Live (no billing) | Billing-lite in Month 3; real billing, SSO and audit log [post-launch](/docs/roadmap/beyond-the-mvp) |
+| Enrichment and email verification | 🟡 Mock | First vendor in Month 1; the waterfall post-launch |
+| LLM drafting and AI reply suggestions | 🟡 Mock | Claude in Month 1 |
+| Email sending | 🟡 Mock | SES in Month 1; Instantly / Mailpool post-launch |
+| CRM push | 🟡 Mock | HubSpot in Month 2; Salesforce and Attio post-launch |
 | Integration connect / test / sync | 🟡 Mock | With each real adapter |
-| Invite emails | 🟡 Not wired | Phase 1 |
-| Sequence sending and step scheduling | ⛔ Not built | Phase 2 |
-| Inbound reply capture | ⛔ Not built | Phase 2 |
-| Mailbox health, warm-up, DNS checks | ⛔ Not built | Phase 3 |
-| Notification preferences and delivery | ⛔ Not built | Phase 3 |
-| LinkedIn sending (HeyReach) | ⛔ Not built | Phase 3 |
-| Call intelligence (Fireflies) | ⛔ Not built | Phase 4 |
+| Invite emails | 🟡 Not wired | Month 1 |
+| Sequence sending and step scheduling | ⛔ Not built | Month 2 |
+| Inbound reply capture | ⛔ Not built | Month 2 |
+| Mailbox health, warm-up, DNS checks | ⛔ Not built | Month 2–3 (warm-up networks post-launch) |
+| Notification preferences and delivery | ⛔ Not built | [Post-launch](/docs/roadmap/beyond-the-mvp) |
+| LinkedIn sending (HeyReach) | ⛔ Not built | [Post-launch](/docs/roadmap/beyond-the-mvp) |
+| Call intelligence (Fireflies) | ⛔ Not built | [Post-launch](/docs/roadmap/beyond-the-mvp) |
 
 The full capability-by-capability view is in the [Capability map](/docs/architecture/capability-map); the "live vs mocked" summary is also on the [Product overview](/docs/product#what-is-live-vs-mocked-today).
 
@@ -78,7 +78,7 @@ Engineering detail and suggested fixes: [Tech debt](/docs/engineering/tech-debt)
 
 <Accordions>
   <Accordion title="Should more than one playbook be able to run per signal?">
-    Today the first match wins. Alternatives are "run all matches", or priorities with a stop flag. This affects how RevOps designs playbooks and how run traces look. To be decided before Phase 3.
+    Today the first match wins. Alternatives are "run all matches", or priorities with a stop flag. This affects how RevOps designs playbooks and how run traces look. Not decided for the MVP — first match wins at launch, and the decision is a [post-launch](/docs/roadmap/beyond-the-mvp) trigger.
   </Accordion>
   <Accordion title="How should playbook order be managed?">
     Order is creation order today. Options include drag-to-reorder, explicit priority numbers, or more specific rules winning automatically.
@@ -93,17 +93,17 @@ Engineering detail and suggested fixes: [Tech debt](/docs/engineering/tech-debt)
     Mid-market and enterprise motions may need different ICPs and thresholds. How would tiers and playbooks refer to segments?
   </Accordion>
   <Accordion title="How much autonomy should auto-send have?">
-    Guardrails such as daily caps, domain allow-lists and sentiment checks may be needed before auto-send is safe at scale. Planned for Phase 3.
+    Guardrails such as daily caps, domain allow-lists and sentiment checks may be needed before auto-send is safe at scale. Approval stays on by default at launch; autonomous auto-send is [post-launch](/docs/roadmap/beyond-the-mvp).
   </Accordion>
   <Accordion title="Which system owns a deal once CRM pull exists?">
-    The CRM conflict policy is a setting today. Product needs to decide the default and how conflicts are shown to users before HubSpot two-way sync (Phase 2).
+    The CRM conflict policy is a setting today. Product needs to decide the default and how conflicts are shown to users before HubSpot two-way sync — the decision is due **6 November 2026** ([Dependencies & risks](/docs/roadmap/dependencies-and-risks#decisions-with-dates)).
   </Accordion>
   <Accordion title="Pricing and billing">
     Plan prices appear in the UI, but there is no billing. Should credits or usage (for example LLM tokens) be metered and enforced per plan? To be decided before GA.
   </Accordion>
 </Accordions>
 
-Decision owners and deadlines are tracked in [Roadmap → Dependencies & risks](/docs/roadmap/dependencies-and-risks#other-decisions-with-dates) and [Architecture → Decisions](/docs/architecture/decisions#open-decisions).
+Decision owners and deadlines are tracked in [Roadmap → Dependencies & risks](/docs/roadmap/dependencies-and-risks#decisions-with-dates) and [Architecture → Decisions](/docs/architecture/decisions#open-decisions).
 
 ## Related
 
